@@ -6,8 +6,10 @@ import 'package:ayugram_ios/td/td_service.dart';
 import 'package:ayugram_ios/ui/auth_screen.dart';
 import 'package:ayugram_ios/ui/ayu_theme.dart';
 import 'package:ayugram_ios/ui/chat_list_screen.dart';
+import 'package:ayugram_ios/ui/countries.dart';
 import 'package:ayugram_ios/ui/message_bubble.dart';
 import 'package:ayugram_ios/ui/settings_screen.dart';
+import 'package:ayugram_ios/ui/telegram_settings.dart';
 import 'package:ayugram_ios/ui/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -68,12 +70,13 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     await AyuSettings.instance.load();
+    await Countries.load();
     const fonts = 'assets/fonts';
     await _font('OpenSans', ['$fonts/OpenSans-Regular.ttf', '$fonts/OpenSans-Semibold.ttf', '$fonts/OpenSans-Bold.ttf']);
     await _font('MaterialIcons', ['${Platform.environment['HOME']}/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf']);
     final svc = TdService.instance;
     svc.myId = 1;
-    svc.users[1] = {'id': 1, 'first_name': 'Иван', 'type': {'@type': 'userTypeRegular'}, 'verification_status': {'is_verified': true}};
+    svc.users[1] = {'id': 1, 'first_name': 'Иван', 'phone_number': '380501234567', 'usernames': {'active_usernames': ['ivan_test']}, 'type': {'@type': 'userTypeRegular'}, 'verification_status': {'is_verified': true}};
     svc.users[77] = {'id': 77, 'first_name': 'Дашко', 'type': {'@type': 'userTypeRegular'}, 'status': {'@type': 'userStatusOnline'}};
     svc.users[78] = {'id': 78, 'first_name': 'Andrii', 'type': {'@type': 'userTypeRegular'}, 'status': {'@type': 'userStatusRecently'}};
     svc.supergroups[3] = {'id': 3, 'member_count': 6005, 'status': {'@type': 'chatMemberStatusMember'}};
@@ -195,6 +198,19 @@ void main() {
       ]),
       'channel',
     );
+  });
+
+  testWidgets('telegram settings', (t) async {
+    await shot(t, const TelegramSettingsScreen(), 'tg_settings');
+  });
+
+  testWidgets('country picker', (t) async {
+    await shot(t, const AuthScreen(state: {'@type': 'authorizationStateWaitPhoneNumber'}), 'auth_phone2');
+    await t.tap(find.byIcon(Icons.keyboard_arrow_down));
+    for (var i = 0; i < 10; i++) {
+      await t.pump(const Duration(milliseconds: 60));
+    }
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('previews/country_picker.png'));
   });
 
   testWidgets('settings', (t) async {

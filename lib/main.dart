@@ -6,11 +6,13 @@ import 'td/td_service.dart';
 import 'ui/auth_screen.dart';
 import 'ui/chat_list_screen.dart';
 import 'ui/ayu_theme.dart';
+import 'ui/countries.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AyuSettings.instance.load();
   await MessageStore.instance.open();
+  await Countries.load();
   runApp(const AyuApp());
 }
 
@@ -57,6 +59,11 @@ class _AyuAppState extends State<AyuApp> with WidgetsBindingObserver {
         title: 'AyuGram',
         debugShowCheckedModeBanner: false,
         theme: buildAyuTheme(AyuSettings.instance.nightMode),
+        // «Масштаб интерфейса» из настроек.
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(AyuSettings.instance.interfaceScale)),
+          child: child!,
+        ),
         home: !_started
             ? ApiKeysScreen(onDone: () => setState(_maybeStart))
             : ListenableBuilder(

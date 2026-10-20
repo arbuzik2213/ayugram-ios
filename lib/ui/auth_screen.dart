@@ -7,6 +7,7 @@ import '../ayu/ayu_settings.dart';
 import '../td/td_client.dart';
 import '../td/td_service.dart';
 import 'ayu_theme.dart';
+import 'countries.dart';
 import 'widgets.dart';
 
 /// Экран, если api_id/api_hash не были вшиты при сборке (--dart-define).
@@ -75,37 +76,46 @@ class _AuthScreenState extends State<AuthScreen> {
   String? _error;
   bool _editPhone = false;
 
-  List<TdObject> _countries = [];
-  TdObject? _country;
-  late final _codeField = TextEditingController(text: '+380');
+  Country? _country;
+  final _codeField = TextEditingController(text: '+');
 
   @override
   void initState() {
     super.initState();
-    _loadCountries();
+    _initCountries();
   }
 
-  Future<void> _loadCountries() async {
-    try {
-      final res = await TdService.instance.td.send({'@type': 'getCountries'});
-      final list = (res['countries'] as List).cast<TdObject>().where((c) => c['is_hidden'] != true).toList()
-        ..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
-      final locale = Platform.localeName.split(RegExp('[_-]'));
-      final cc = locale.length > 1 ? locale[1].toUpperCase() : 'UA';
-      if (!mounted) return;
-      setState(() {
-        _countries = list;
-        _country = list.firstWhere((c) => c['country_code'] == cc,
-            orElse: () => list.firstWhere((c) => c['country_code'] == 'UA', orElse: () => list.first));
-        _codeField.text = '+${(_country!['calling_codes'] as List).first}';
-      });
-    } catch (_) {}
+  Future<void> _initCountries() async {
+    await Countries.load();
+    final locale = Platform.localeName.split(RegExp('[_-]'));
+    final iso = locale.length > 1 ? locale[1] : 'UA';
+    if (!mounted) return;
+    setState(() => _setCountry(Countries.byIso(iso) ?? Countries.byIso('UA')));
+    await Countries.localize();
+    if (mounted) setState(() {});
+  }
+
+  void _setCountry(Country? c) {
+    _country = c;
+    if (c != null) _codeField.text = '+${c.code}';
+    _reformatPhone();
+  }
+
+  void _reformatPhone() {
+    final digits = _phone.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final f = _country?.format(digits) ?? digits;
+    if (f != _phone.text) {
+      _phone.value = TextEditingValue(text: f, selection: TextSelection.collapsed(offset: f.length));
+    }
   }
 
   @override
   void didUpdateWidget(AuthScreen old) {
     super.didUpdateWidget(old);
     if (old.state['@type'] != widget.state['@type']) {
+      Countries.localize().then((_) {
+        if (mounted) setState(() {});
+      });
       _error = null;
       _editPhone = false;
       _code.clear();
@@ -161,18 +171,41 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _pickCountry() async {
-    final picked = await showDialog<TdObject>(context: context, builder: (_) => _CountryDialog(countries: _countries));
-    if (picked == null) return;
-    setState(() {
-      _country = picked;
-      _codeField.text = '+${(picked['calling_codes'] as List).first}';
-    });
+    final picked = await showDialog<Country>(context: context, builder: (_) => const _CountryDialog());
+    if (picked != null) setState(() => _setCountry(picked));
   }
 
   void _onCodeChanged(String v) {
-    final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
-    final match = _countries.where((c) => (c['calling_codes'] as List).contains(digits)).toList();
-    if (match.isNotEmpty) setState(() => _country = match.first);
+    var digits = v.replaceAll(RegExp(r'[^0-9]'), '');
+    // Код вставили вместе с номером — разбираем, как Telegram.
+    final c = Countries.byPrefix(digits);
+    if (c != null && digits.length > c.code.length) {
+      _phone.text = digits.substring(c.code.length) + _phone.text;
+      digits = c.code;
+    }
+    _codeField.value = TextEditingValue(text: '+$digits', selection: TextSelection.collapsed(offset: digits.length + 1));
+    setState(() {
+      if (_country?.code != digits) {
+        final same = Countries.list.where((x) => x.code == digits).toList();
+        // Для общих кодов (+7, +1) берём основную страну, как Telegram.
+        _country = same.where((x) => const {'RU', 'US'}.contains(x.iso)).firstOrNull ?? same.firstOrNull;
+      }
+      _reformatPhone();
+    });
+  }
+
+  void _onPhoneChanged(String v) {
+    // Вставили номер целиком с «+» — переносим код страны в своё поле.
+    if (v.trim().startsWith('+')) {
+      final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
+      final c = Countries.byPrefix(digits);
+      if (c != null) {
+        _phone.text = digits.substring(c.code.length);
+        setState(() => _setCountry(c));
+        return;
+      }
+    }
+    setState(_reformatPhone);
   }
 
   @override
@@ -260,12 +293,16 @@ class _AuthScreenState extends State<AuthScreen> {
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _title(context, 'Ваш номер телефона', const Text('Проверьте код страны и введите\nсвой номер телефона.')),
           InkWell(
-            onTap: _countries.isEmpty ? null : _pickCountry,
+            onTap: _pickCountry,
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.inputBorderFg))),
               child: Row(children: [
-                Expanded(child: Text(_country?['name'] as String? ?? 'Страна', style: field)),
+                if (_country != null) Padding(padding: const EdgeInsets.only(right: 10), child: Text(_country!.flag, style: const TextStyle(fontSize: 20))),
+                Expanded(
+                  child: Text(_country?.name ?? 'Неверный код страны',
+                      style: field.copyWith(color: _country == null ? c.windowSubTextFg : null)),
+                ),
                 Icon(Icons.keyboard_arrow_down, color: c.menuIconFg),
               ]),
             ),
@@ -273,7 +310,7 @@ class _AuthScreenState extends State<AuthScreen> {
           const SizedBox(height: 14),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             SizedBox(
-              width: 64,
+              width: 70,
               child: TextField(
                 controller: _codeField,
                 keyboardType: TextInputType.phone,
@@ -289,8 +326,10 @@ class _AuthScreenState extends State<AuthScreen> {
                 controller: _phone,
                 autofocus: true,
                 keyboardType: TextInputType.phone,
-                style: field.copyWith(letterSpacing: 1),
-                decoration: _underline(context, hint: '-- --- -- --'),
+                autofillHints: const [AutofillHints.telephoneNumberNational],
+                style: field.copyWith(letterSpacing: 0.5),
+                onChanged: _onPhoneChanged,
+                decoration: _underline(context, hint: _country?.hint ?? '--- --- ----'),
                 onSubmitted: (_) => _submit(),
               ),
             ),
@@ -435,26 +474,7 @@ class _AuthScreenState extends State<AuthScreen> {
     return Text(type, style: TextStyle(color: c.windowSubTextFg));
   }
 
-  /// +380501234567 → +380 50 123 45 67 (по коду страны из getCountries).
-  String _formatPhone(String digits) {
-    String? code;
-    for (final c in _countries) {
-      for (final cc in (c['calling_codes'] as List).cast<String>()) {
-        if (digits.startsWith(cc) && (code == null || cc.length > code.length)) code = cc;
-      }
-    }
-    code ??= digits.length > 10 ? digits.substring(0, digits.length - 10) : '';
-    final rest = digits.substring(code.length);
-    final groups = <String>[];
-    var i = 0;
-    for (final n in rest.length == 9 ? [2, 3, 2, 2] : rest.length == 10 ? [3, 3, 2, 2] : [rest.length]) {
-      if (i >= rest.length) break;
-      groups.add(rest.substring(i, (i + n).clamp(0, rest.length)));
-      i += n;
-    }
-    if (i < rest.length) groups.add(rest.substring(i));
-    return '+$code ${groups.join(' ')}'.trim();
-  }
+  String _formatPhone(String digits) => Countries.formatFull(digits);
 
   String _codeHint(TdObject? t) => switch (t?['@type']) {
         'authenticationCodeTypeSms' => 'Мы отправили SMS с кодом.',
@@ -545,10 +565,9 @@ class _CodeBoxesState extends State<_CodeBoxes> {
   }
 }
 
-/// Диалог «Выберите страну».
+/// Диалог «Выберите страну» (CountrySelectBox в tdesktop).
 class _CountryDialog extends StatefulWidget {
-  const _CountryDialog({required this.countries});
-  final List<TdObject> countries;
+  const _CountryDialog();
 
   @override
   State<_CountryDialog> createState() => _CountryDialogState();
@@ -560,23 +579,20 @@ class _CountryDialogState extends State<_CountryDialog> {
   @override
   Widget build(BuildContext context) {
     final c = context.ayu;
-    final list = widget.countries.where((x) {
-      if (_q.isEmpty) return true;
-      final q = _q.toLowerCase();
-      return (x['name'] as String).toLowerCase().contains(q) ||
-          (x['english_name'] as String? ?? '').toLowerCase().contains(q) ||
-          (x['calling_codes'] as List).any((cc) => '+$cc'.contains(q));
-    }).toList();
+    final q = _q.toLowerCase().replaceAll('+', '');
+    final list = Countries.list
+        .where((x) => q.isEmpty || x.name.toLowerCase().contains(q) || x.iso.toLowerCase() == q || x.code.startsWith(q))
+        .toList();
     return Dialog(
       backgroundColor: c.windowBg,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 6),
           child: Text('Выберите страну', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.windowBoldFg)),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          padding: const EdgeInsets.fromLTRB(12, 0, 16, 0),
           child: TextField(
             autofocus: true,
             onChanged: (v) => setState(() => _q = v),
@@ -591,22 +607,31 @@ class _CountryDialogState extends State<_CountryDialog> {
         ),
         Divider(height: 1, color: c.inputBorderFg),
         Expanded(
-          child: ListView.builder(
-            itemCount: list.length,
-            itemBuilder: (context, i) {
-              final x = list[i];
-              return InkWell(
-                onTap: () => Navigator.pop(context, x),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-                  child: Text.rich(TextSpan(children: [
-                    TextSpan(text: x['name'] as String, style: TextStyle(fontWeight: FontWeight.w600, color: c.windowFg)),
-                    TextSpan(text: '  +${(x['calling_codes'] as List).first}', style: TextStyle(color: c.windowSubTextFg)),
-                  ]), style: const TextStyle(fontSize: 14)),
+          child: list.isEmpty
+              ? Center(child: Text('Страна не найдена', style: TextStyle(color: c.windowSubTextFg)))
+              : ListView.builder(
+                  itemCount: list.length,
+                  itemBuilder: (context, i) {
+                    final x = list[i];
+                    return InkWell(
+                      onTap: () => Navigator.pop(context, x),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+                        child: Row(children: [
+                          Text(x.flag, style: const TextStyle(fontSize: 20)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(x.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.windowFg)),
+                          ),
+                          Text('+${x.code}', style: TextStyle(fontSize: 14, color: c.windowSubTextFg)),
+                        ]),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
         ),
         Divider(height: 1, color: c.inputBorderFg),
         Align(

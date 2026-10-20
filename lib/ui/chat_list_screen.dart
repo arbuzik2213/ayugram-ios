@@ -7,6 +7,7 @@ import 'ayu_theme.dart';
 import 'chat_screen.dart';
 import 'format.dart';
 import 'settings_screen.dart';
+import 'telegram_settings.dart';
 import 'widgets.dart';
 
 class ChatListScreen extends StatefulWidget {
@@ -338,6 +339,7 @@ class AyuDrawer extends StatelessWidget {
               ),
               Divider(height: 1, thickness: 1, color: c.dividerBg),
               const SizedBox(height: 6),
+              item(Icons.account_circle_outlined, 'Мой профиль', () => open(const InformationScreen())),
               item(Icons.bookmark_border, 'Избранное', () {
                 Navigator.pop(context);
                 final id = svc.myId;
@@ -355,7 +357,7 @@ class AyuDrawer extends StatelessWidget {
                 s.sendReadMessages = v;
                 s.save();
               }),
-              item(Icons.settings_outlined, 'Настройки', () => open(const SettingsScreen())),
+              item(Icons.settings_outlined, 'Настройки', () => open(const TelegramSettingsScreen())),
               item(Icons.dark_mode_outlined, 'Ночной режим', () {
                 s.nightMode = !s.nightMode;
                 s.save();

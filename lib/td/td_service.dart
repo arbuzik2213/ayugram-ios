@@ -25,6 +25,7 @@ class TdService extends ChangeNotifier {
   final users = <int, TdObject>{};
   final supergroups = <int, TdObject>{};
   final basicGroups = <int, TdObject>{};
+  List<TdObject> chatFolders = [];
   final blockedUsers = <int>{};
   final _files = <int, ValueNotifier<TdObject>>{};
 
@@ -67,6 +68,9 @@ class TdService extends ChangeNotifier {
       case 'updateSupergroup':
         final sg = u['supergroup'] as TdObject;
         supergroups[sg['id'] as int] = sg;
+        _bumpChats();
+      case 'updateChatFolders':
+        chatFolders = (u['chat_folders'] as List? ?? []).cast<TdObject>();
         _bumpChats();
       case 'updateBasicGroup':
         final bg = u['basic_group'] as TdObject;
