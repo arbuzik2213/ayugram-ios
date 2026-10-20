@@ -38,6 +38,8 @@ dependencies:
   sqflite: ^2.4.4+2
   path_provider: ^2.1.6
   path: ^1.9.1
+  tdlib_ios:
+    path: packages/tdlib_ios
   image_picker: ^1.2.4
 
 dev_dependencies:

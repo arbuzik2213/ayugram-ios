@@ -47,5 +47,3 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 
-# TDLib binary (scripts/fetch_tdlib.sh)
-ios/TDLib/TDLibFramework.xcframework/

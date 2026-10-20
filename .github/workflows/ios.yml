@@ -16,9 +16,6 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Fetch TDLib
-        run: ./scripts/fetch_tdlib.sh
-
       - name: Build (unsigned)
         env:
           TG_API_ID: ${{ secrets.TG_API_ID }}
