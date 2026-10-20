@@ -196,6 +196,8 @@ ThemeData buildAyuTheme(bool night) {
     brightness: b,
     useMaterial3: false,
     fontFamily: ayuFont,
+    // Эмодзи и флаги: системный шрифт iOS (в тестах — Noto Color Emoji).
+    fontFamilyFallback: const ['Apple Color Emoji', 'NotoColorEmoji'],
     colorScheme: ColorScheme.fromSeed(seedColor: c.activeButtonBg, brightness: b).copyWith(
       primary: c.windowActiveTextFg,
       secondary: c.windowActiveTextFg,
@@ -216,7 +218,7 @@ ThemeData buildAyuTheme(bool night) {
       elevation: 0,
       scrolledUnderElevation: 0,
       shape: Border(bottom: BorderSide(color: c.dark ? const Color(0xff0e1621) : c.inputBorderFg, width: 1)),
-      titleTextStyle: TextStyle(fontFamily: ayuFont, color: c.windowBoldFg, fontSize: 16, fontWeight: FontWeight.w600),
+      titleTextStyle: TextStyle(fontFamily: ayuFont, fontFamilyFallback: const ['Apple Color Emoji', 'NotoColorEmoji'], color: c.windowBoldFg, fontSize: 16, fontWeight: FontWeight.w600),
       iconTheme: IconThemeData(color: c.menuIconFg),
       actionsIconTheme: IconThemeData(color: c.menuIconFg),
     ),

@@ -73,6 +73,7 @@ void main() {
     await Countries.load();
     const fonts = 'assets/fonts';
     await _font('OpenSans', ['$fonts/OpenSans-Regular.ttf', '$fonts/OpenSans-Semibold.ttf', '$fonts/OpenSans-Bold.ttf']);
+    await _font('NotoColorEmoji', ['/usr/share/fonts/google-noto-color-emoji-fonts/Noto-COLRv1.ttf']);
     await _font('MaterialIcons', ['${Platform.environment['HOME']}/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf']);
     final svc = TdService.instance;
     svc.myId = 1;
