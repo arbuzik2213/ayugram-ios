@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../ayu/ayu_settings.dart';
 import '../ayu/message_store.dart';
@@ -26,6 +28,23 @@ class TdService extends ChangeNotifier {
   final supergroups = <int, TdObject>{};
   final basicGroups = <int, TdObject>{};
   List<TdObject> chatFolders = [];
+
+  /// Непрочитанные сообщения в основном списке (бейдж на вкладке «Чаты»).
+  int unreadMessages = 0;
+
+  /// connectionStateReady / Connecting / Updating / WaitingForNetwork.
+  String connectionState = 'connectionStateReady';
+
+  // --- Несколько аккаунтов: у каждого своя папка базы TDLib ---
+  late SharedPreferences _prefs;
+  List<int> accounts = [0];
+  int currentAccount = 0;
+  int? _switchTo;
+  int? _removeOnClose;
+  int? _returnTo;
+
+  /// Сохранённые имя/телефон аккаунтов (чтобы показывать неактивные).
+  Map<int, Map<String, dynamic>> accountInfo = {};
   final blockedUsers = <int>{};
   final _files = <int, ValueNotifier<TdObject>>{};
 
@@ -41,6 +60,15 @@ class TdService extends ChangeNotifier {
   DateTime _suppressStatusUntil = DateTime.fromMillisecondsSinceEpoch(0);
 
   Future<void> start() async {
+    _prefs = await SharedPreferences.getInstance();
+    accounts = (_prefs.getStringList('accounts') ?? ['0']).map(int.parse).toList();
+    currentAccount = _prefs.getInt('current_account') ?? accounts.first;
+    if (!accounts.contains(currentAccount)) currentAccount = accounts.first;
+    final info = _prefs.getString('account_info');
+    if (info != null) {
+      accountInfo = (jsonDecode(info) as Map<String, dynamic>)
+          .map((k, v) => MapEntry(int.parse(k), Map<String, dynamic>.from(v as Map)));
+    }
     _settings.addListener(_applyOnline);
     td.updates.listen((u) {
       // Порядок обработки важен (правка → удаление), поэтому обновления идут по очереди.
@@ -68,6 +96,14 @@ class TdService extends ChangeNotifier {
       case 'updateSupergroup':
         final sg = u['supergroup'] as TdObject;
         supergroups[sg['id'] as int] = sg;
+        _bumpChats();
+      case 'updateUnreadMessageCount':
+        if ((u['chat_list'] as TdObject?)?['@type'] == 'chatListMain') {
+          unreadMessages = u['unread_count'] as int? ?? 0;
+          _bumpChats();
+        }
+      case 'updateConnectionState':
+        connectionState = (u['state'] as TdObject)['@type'] as String;
         _bumpChats();
       case 'updateChatFolders':
         chatFolders = (u['chat_folders'] as List? ?? []).cast<TdObject>();
@@ -186,8 +222,8 @@ class TdService extends ChangeNotifier {
         await td.send({
           '@type': 'setTdlibParameters',
           'use_test_dc': false,
-          'database_directory': '${docs.path}/tdlib',
-          'files_directory': '${docs.path}/tdlib_files',
+          'database_directory': '${docs.path}/${_dir(currentAccount)}',
+          'files_directory': '${docs.path}/${_dir(currentAccount)}_files',
           'database_encryption_key': '',
           'use_file_database': true,
           'use_chat_info_database': true,
@@ -201,22 +237,95 @@ class TdService extends ChangeNotifier {
           'application_version': '1.0 (AyuGram iOS)',
         });
       case 'authorizationStateReady':
+        _returnTo = null;
         _applyOnline();
-        _loadChats();
+        _loadChats('chatListMain');
+        _loadChats('chatListArchive');
         _loadBlocked();
+        _saveAccountInfo();
       case 'authorizationStateClosed':
-        chats.clear();
-        users.clear();
-        blockedUsers.clear();
-        chatListVersion.value++;
+        _resetState();
+        if (_removeOnClose != null) {
+          accounts.remove(_removeOnClose);
+          accountInfo.remove(_removeOnClose);
+          if (accounts.isEmpty) accounts = [_removeOnClose!];
+          if (!accounts.contains(_switchTo)) _switchTo = accounts.first;
+          _removeOnClose = null;
+        }
+        currentAccount = _switchTo ?? currentAccount;
+        _switchTo = null;
+        _saveAccounts();
         await td.restart();
     }
   }
 
-  Future<void> _loadChats() async {
+  static String _dir(int account) => account == 0 ? 'tdlib' : 'tdlib_$account';
+
+  void _resetState() {
+    chats.clear();
+    users.clear();
+    supergroups.clear();
+    basicGroups.clear();
+    blockedUsers.clear();
+    chatFolders = [];
+    unreadMessages = 0;
+    myId = null;
+    chatListVersion.value++;
+  }
+
+  void _saveAccounts() {
+    _prefs.setStringList('accounts', accounts.map((e) => '$e').toList());
+    _prefs.setInt('current_account', currentAccount);
+    _prefs.setString('account_info', jsonEncode(accountInfo.map((k, v) => MapEntry('$k', v))));
+    notifyListeners();
+  }
+
+  Future<void> _saveAccountInfo() async {
+    try {
+      final me = await td.send({'@type': 'getMe'});
+      users[me['id'] as int] = me;
+      myId = me['id'] as int;
+      accountInfo[currentAccount] = {
+        'id': me['id'],
+        'name': '${me['first_name'] ?? ''} ${me['last_name'] ?? ''}'.trim(),
+        'phone': me['phone_number'] ?? '',
+      };
+      _saveAccounts();
+    } catch (_) {}
+  }
+
+  bool get isAddingAccount => _returnTo != null;
+
+  /// Переключиться на другой сохранённый аккаунт.
+  void switchAccount(int account) {
+    if (account == currentAccount || !accounts.contains(account)) return;
+    _switchTo = account;
+    td.fire({'@type': 'close'});
+  }
+
+  /// Добавить аккаунт: новая папка базы и экран входа (или регистрации).
+  void addAccount() {
+    final next = accounts.reduce((a, b) => a > b ? a : b) + 1;
+    accounts.add(next);
+    _returnTo = currentAccount;
+    _saveAccounts();
+    switchAccount(next);
+  }
+
+  /// Отменить добавление аккаунта и вернуться к прежнему.
+  void cancelAddAccount() {
+    final back = _returnTo;
+    if (back == null) return;
+    _returnTo = null;
+    _removeOnClose = currentAccount;
+    _switchTo = back;
+    td.fire({'@type': 'close'});
+  }
+
+  Future<void> _loadChats(String list) async {
     for (var i = 0; i < 10; i++) {
       try {
-        await td.send({'@type': 'loadChats', 'chat_list': {'@type': 'chatListMain'}, 'limit': 100});
+        await td.send({'@type': 'loadChats', 'chat_list': {'@type': list}, 'limit': 100});
       } on TdError {
         break; // 404 — все чаты загружены
       }
@@ -427,11 +536,14 @@ class TdService extends ChangeNotifier {
   // Вспомогательное
   // ---------------------------------------------------------------------------
 
-  List<TdObject> mainChatList() {
+  List<TdObject> mainChatList() => chatList('chatListMain');
+
+  /// Чаты списка (chatListMain / chatListArchive), отсортированные по order.
+  List<TdObject> chatList(String type) {
     final list = <(BigInt, TdObject)>[];
     for (final chat in chats.values) {
       for (final p in (chat['positions'] as List? ?? [])) {
-        if ((p['list'] as TdObject)['@type'] == 'chatListMain') {
+        if ((p['list'] as TdObject)['@type'] == type) {
           list.add((BigInt.parse('${p['order']}'), chat));
         }
       }
@@ -513,6 +625,10 @@ class TdService extends ChangeNotifier {
   }
 
   Future<void> logOut() async {
+    _removeOnClose = currentAccount;
+    _switchTo = accounts.firstWhere((a) => a != currentAccount, orElse: () => currentAccount);
+    if (_switchTo == currentAccount) _removeOnClose = null;
+    accountInfo.remove(currentAccount);
     await td.send({'@type': 'logOut'});
   }
 }

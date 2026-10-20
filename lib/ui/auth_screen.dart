@@ -231,6 +231,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   }),
                 ),
               const Spacer(),
+              // Добавление второго аккаунта можно отменить и вернуться к прежнему.
+              if (TdService.instance.isAddingAccount)
+                TextButton(onPressed: TdService.instance.cancelAddAccount, child: const Text('Отмена')),
             ]),
           ),
           Expanded(

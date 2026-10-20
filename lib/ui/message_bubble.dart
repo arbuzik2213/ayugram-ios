@@ -395,8 +395,13 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-String compactCount(int n) =>
-    n < 1000 ? '$n' : n < 1000000 ? '${(n / 1000).toStringAsFixed(1)}K' : '${(n / 1e6).toStringAsFixed(1)}M';
+/// 5400 → «5,4K», как в Telegram.
+String compactCount(int n) {
+  String f(double v) => v.toStringAsFixed(v < 10 ? 1 : 0).replaceAll('.0', '').replaceAll('.', ',');
+  if (n < 1000) return '$n';
+  if (n < 1000000) return '${f(n / 1000)}K';
+  return '${f(n / 1e6)}M';
+}
 
 /// Пузырь tdesktop: скругление и маленький «хвостик» у последнего сообщения серии.
 class _BubblePainter extends CustomPainter {

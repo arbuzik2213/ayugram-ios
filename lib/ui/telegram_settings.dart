@@ -91,7 +91,10 @@ Future<void> _push(BuildContext context, Widget screen) => Navigator.push(contex
 // =============================================================================
 
 class TelegramSettingsScreen extends StatefulWidget {
-  const TelegramSettingsScreen({super.key});
+  const TelegramSettingsScreen({super.key, this.embedded = false});
+
+  /// Вкладка главного экрана (без кнопки «назад», с отступом под панель вкладок).
+  final bool embedded;
 
   @override
   State<TelegramSettingsScreen> createState() => _TelegramSettingsScreenState();
@@ -111,10 +114,10 @@ class _TelegramSettingsScreenState extends State<TelegramSettingsScreen> {
     final verified = (me['verification_status'] as TdObject?)?['is_verified'] == true;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Настройки')),
+      appBar: AppBar(title: const Text('Настройки'), automaticallyImplyLeading: !widget.embedded, centerTitle: widget.embedded),
       body: ListenableBuilder(
-        listenable: s,
-        builder: (context, _) => ListView(padding: EdgeInsets.zero, children: [
+        listenable: Listenable.merge([s, _svc]),
+        builder: (context, _) => ListView(padding: EdgeInsets.only(bottom: widget.embedded ? 110 : 0), children: [
           // Обложка профиля (Settings::Cover).
           InkWell(
             onTap: () => _push(context, const InformationScreen()).then((_) => setState(() {})),
@@ -143,6 +146,27 @@ class _TelegramSettingsScreenState extends State<TelegramSettingsScreen> {
                 ),
               ]),
             ),
+          ),
+          Container(height: 8, color: c.dividerBg),
+          // Аккаунты (как в Telegram для iOS): переключение и добавление.
+          for (final acc in _svc.accounts)
+            if (acc != _svc.currentAccount)
+              _AccountRow(account: acc, onTap: () {
+                Navigator.popUntil(context, (r) => r.isFirst);
+                _svc.switchAccount(acc);
+              }),
+          TextCell(
+            title: 'Добавить аккаунт',
+            icon: Icons.person_add_alt,
+            color: c.windowActiveTextFg,
+            onTap: () async {
+              if (_svc.accounts.length >= 5) {
+                _toast(context, 'Можно добавить до 5 аккаунтов');
+                return;
+              }
+              Navigator.popUntil(context, (r) => r.isFirst);
+              _svc.addAccount();
+            },
           ),
           Container(height: 8, color: c.dividerBg),
           const SizedBox(height: 6),
@@ -182,6 +206,40 @@ class _TelegramSettingsScreenState extends State<TelegramSettingsScreen> {
             },
           ),
           const SizedBox(height: 30),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Неактивный аккаунт в списке.
+class _AccountRow extends StatelessWidget {
+  const _AccountRow({required this.account, required this.onTap});
+  final int account;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.ayu;
+    final info = TdService.instance.accountInfo[account] ?? const {};
+    final name = (info['name'] as String?)?.isNotEmpty == true ? info['name'] as String : 'Аккаунт ${account + 1}';
+    final phone = info['phone'] as String? ?? '';
+    return InkWell(
+      onTap: onTap,
+      child: SizedBox(
+        height: 52,
+        child: Row(children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Avatar(id: info['id'] as int? ?? account, title: name, radius: 16),
+          ),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(name, style: TextStyle(fontSize: 15, color: c.windowFg)),
+              if (phone.isNotEmpty && !AyuSettings.instance.streamerMode)
+                Text(Countries.formatFull(phone), style: TextStyle(fontSize: 13, color: c.windowSubTextFg)),
+            ]),
+          ),
         ]),
       ),
     );

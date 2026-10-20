@@ -83,7 +83,9 @@ void main() {
     svc.supergroups[3] = {'id': 3, 'member_count': 6005, 'status': {'@type': 'chatMemberStatusMember'}};
     svc.supergroups[4] = {'id': 4, 'member_count': 669295, 'status': {'@type': 'chatMemberStatusMember'}, 'verification_status': {'is_verified': true}};
     for (final c in [
-      _chat(2, 'флудилка, Гладенко', 'Нифига текстик', unread: 24491, type: 'chatTypeBasicGroup', order: 999),
+      _chat(2, 'флудилка, Гладенко', 'Нифига текстик', unread: 24491, type: 'chatTypeBasicGroup', order: 999, muted: true),
+      {..._chat(9, 'Times of Ukraine', 'Новини', unread: 3, type: 'chatTypeSupergroup', channel: true, order: 900),
+        'positions': [{'list': {'@type': 'chatListArchive'}, 'order': '5', 'is_pinned': false}]},
       _chat(3, 'Труха⚡Київ Chat', '777: ИДИ СЮДА', unread: 5310, type: 'chatTypeSupergroup', order: 998),
       _chat(5, 'Telegram', 'Аниме', out: true, order: 997),
       _chat(6, 'НЕПТУН', 'Вінниччина: БПЛА на Вендичани/Хмельниччина', unread: 4741, type: 'chatTypeSupergroup', channel: true, order: 996),
@@ -128,8 +130,8 @@ void main() {
     await shot(t, const ChatListScreen(), 'chat_list_day', night: false);
   });
 
-  testWidgets('drawer', (t) async {
-    await shot(t, const Scaffold(body: AyuDrawer()), 'drawer');
+  testWidgets('search', (t) async {
+    await shot(t, const SearchScreen(), 'search');
   });
 
   for (final night in [true, false]) {
