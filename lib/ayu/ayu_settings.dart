@@ -93,6 +93,7 @@ class AyuSettings extends ChangeNotifier {
   bool streamerMode = false;
   bool nightMode = true;
   double interfaceScale = 1.0;
+  bool notificationsEnabled = false;
 
   // --- Подтверждения отправки ---
   bool stickerConfirmation = false;
@@ -157,6 +158,7 @@ class AyuSettings extends ChangeNotifier {
         'streamerMode': streamerMode,
         'nightMode': nightMode,
         'interfaceScale': interfaceScale,
+        'notificationsEnabled': notificationsEnabled,
         'stickerConfirmation': stickerConfirmation,
       };
 
@@ -190,6 +192,7 @@ class AyuSettings extends ChangeNotifier {
     streamerMode = v('streamerMode', streamerMode);
     nightMode = v('nightMode', nightMode);
     interfaceScale = (j['interfaceScale'] as num?)?.toDouble() ?? interfaceScale;
+    notificationsEnabled = v('notificationsEnabled', notificationsEnabled);
     stickerConfirmation = v('stickerConfirmation', stickerConfirmation);
   }
 

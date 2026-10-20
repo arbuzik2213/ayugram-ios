@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../ayu/ayu_settings.dart';
@@ -279,3 +281,53 @@ class AyuToggle extends StatelessWidget {
     );
   }
 }
+
+/// «Стеклянная» плашка как в iOS 26 / Telegram: размытие и полупрозрачный фон.
+class Glass extends StatelessWidget {
+  const Glass({super.key, required this.child, this.height, this.radius});
+  final Widget child;
+  final double? height;
+  final double? radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.ayu;
+    final r = BorderRadius.circular(radius ?? (height ?? 48) / 2);
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: r,
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: c.dark ? 0.35 : 0.1), blurRadius: 14, offset: const Offset(0, 3))],
+      ),
+      child: ClipRRect(
+        borderRadius: r,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            alignment: height == null ? null : Alignment.center,
+            color: (c.dark ? c.windowBgOver : c.windowBg).withValues(alpha: 0.82),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Галочки как в iOS-клиенте: одна или две «птички».
+class DoubleCheck extends StatelessWidget {
+  const DoubleCheck({required this.read, required this.color});
+  final bool read;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: read ? 19 : 13,
+        height: 12,
+        child: Stack(children: [
+          Icon(CupertinoIcons.checkmark_alt, size: 14, color: color),
+          if (read) Positioned(left: 5, child: Icon(CupertinoIcons.checkmark_alt, size: 14, color: color)),
+        ]),
+      );
+}
+

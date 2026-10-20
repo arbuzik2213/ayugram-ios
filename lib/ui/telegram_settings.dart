@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -6,6 +7,7 @@ import '../ayu/ayu_settings.dart';
 import '../td/td_client.dart';
 import '../td/td_service.dart';
 import 'ayu_theme.dart';
+import 'chat_screen.dart';
 import 'countries.dart';
 import 'format.dart';
 import 'settings_screen.dart';
@@ -166,6 +168,28 @@ class _TelegramSettingsScreenState extends State<TelegramSettingsScreen> {
               }
               Navigator.popUntil(context, (r) => r.isFirst);
               _svc.addAccount();
+            },
+          ),
+          Container(height: 8, color: c.dividerBg),
+          const SizedBox(height: 6),
+          TextCell(
+            title: 'Избранное',
+            icon: CupertinoIcons.bookmark,
+            onTap: () async {
+              final id = _svc.myId;
+              if (id == null) return;
+              final chat = await _td.send({'@type': 'createPrivateChat', 'user_id': id, 'force': false});
+              if (context.mounted) _push(context, ChatScreen(chatId: chat['id'] as int));
+            },
+          ),
+          CheckCell(
+            icon: CupertinoIcons.tv,
+            title: 'Режим стримера',
+            subtitle: 'Скрывает номер, аватарки и превью сообщений',
+            value: s.streamerMode,
+            onChanged: (v) {
+              s.streamerMode = v;
+              s.save();
             },
           ),
           Container(height: 8, color: c.dividerBg),
@@ -450,6 +474,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Уведомления и звуки')),
       body: ListView(children: [
+        SettingsSection(
+          title: 'AyuGram',
+          footer: 'Уведомления показываются, пока AyuGram открыт или недавно свёрнут. '
+              'Настоящие push-уведомления требуют подписи приложения сертификатом Apple с APNs.',
+          children: [
+            ListenableBuilder(
+              listenable: AyuSettings.instance,
+              builder: (context, _) => CheckCell(
+                icon: CupertinoIcons.bell,
+                title: 'Уведомления AyuGram',
+                subtitle: 'О новых сообщениях в чатах со звуком',
+                value: AyuSettings.instance.notificationsEnabled,
+                onChanged: (v) async {
+                  final s = AyuSettings.instance;
+                  if (v) {
+                    final ok = await TdService.instance.requestNotificationPermission();
+                    if (!ok) {
+                      if (context.mounted) {
+                        _toast(context, 'Разрешите уведомления: Настройки iPhone → AyuGram → Уведомления');
+                      }
+                      return;
+                    }
+                  }
+                  s.notificationsEnabled = v;
+                  s.save();
+                },
+              ),
+            ),
+          ],
+        ),
         for (final (scope, label, icon) in _scopes)
           SettingsSection(title: label, children: [
             CheckCell(

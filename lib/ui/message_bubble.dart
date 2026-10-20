@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../ayu/ayu_settings.dart';
@@ -5,6 +6,8 @@ import '../td/td_client.dart';
 import '../td/td_service.dart';
 import 'ayu_theme.dart';
 import 'format.dart';
+import 'links.dart';
+import 'voice.dart';
 import 'widgets.dart';
 
 /// Плашка по центру истории (дата, служебное сообщение).
@@ -20,11 +23,12 @@ class ServicePill extends StatelessWidget {
           decoration: BoxDecoration(color: context.ayu.msgServiceBg, borderRadius: BorderRadius.circular(12)),
           child: Text(text,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
+              style: const TextStyle(fontSize: 13.5, color: Colors.white, fontWeight: FontWeight.w600)),
         ),
       );
 }
 
+/// Сообщение в стиле Telegram для iOS (ChatMessageBubbleItemNode).
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -37,6 +41,8 @@ class MessageBubble extends StatelessWidget {
     this.avatarSlot = false,
     this.replyTo,
     this.onLongPress,
+    this.onComments,
+    this.onForward,
   });
 
   final TdObject message;
@@ -45,11 +51,11 @@ class MessageBubble extends StatelessWidget {
   final bool isEdited;
   final bool showSender;
   final bool tail;
-
-  /// В группах слева от входящих оставляем место под аватарку (сама аватарка — у последнего в серии).
   final bool avatarSlot;
   final TdObject? replyTo;
   final VoidCallback? onLongPress;
+  final VoidCallback? onComments;
+  final VoidCallback? onForward;
 
   @override
   Widget build(BuildContext context) {
@@ -68,11 +74,16 @@ class MessageBubble extends StatelessWidget {
     final type = content?['@type'];
     final isSticker = type == 'messageSticker' || type == 'messageVideoNote';
     final isMedia = type == 'messagePhoto' || type == 'messageVideo' || type == 'messageAnimation';
+    final formatted = (content?['text'] ?? content?['caption']) as TdObject?;
     final hasText = contentText(content).isNotEmpty;
     final timeColor = out ? c.msgOutDateFg : c.msgInDateFg;
+    final linkColor = out ? c.historyLinkOutFg : c.historyLinkInFg;
+    final textColor = out ? c.historyTextOutFg : c.historyTextInFg;
     final senderId = message['sender_id'] as TdObject?;
     final senderKey = (senderId?['user_id'] ?? senderId?['chat_id'] ?? 0) as int;
     final reactions = _reactions(message);
+    final replyInfo = (message['interaction_info'] as TdObject?)?['reply_info'] as TdObject?;
+    final comments = channel && replyInfo != null && onComments != null;
 
     // --- время, просмотры, галочки ---
     final sending = message['sending_state'] as TdObject?;
@@ -84,24 +95,24 @@ class MessageBubble extends StatelessWidget {
     ].join(' ');
     Widget timeRow(Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
           if (views != null && channel) ...[
-            Icon(Icons.visibility_outlined, size: 13, color: color),
-            const SizedBox(width: 3),
+            Icon(CupertinoIcons.eye, size: 13, color: color),
+            const SizedBox(width: 2),
             Text(compactCount(views), style: TextStyle(fontSize: 12, color: color)),
-            const SizedBox(width: 6),
+            const SizedBox(width: 5),
           ],
-          if (marks.isNotEmpty) Text('$marks ', style: TextStyle(fontSize: 12, color: color, fontStyle: FontStyle.italic)),
+          if (marks.isNotEmpty) Text('$marks ', style: TextStyle(fontSize: 12, color: color)),
           Text(messageTime(message['date'] as int), style: TextStyle(fontSize: 12, color: color)),
           if (out) ...[
-            const SizedBox(width: 3),
+            const SizedBox(width: 2),
             if (sending?['@type'] == 'messageSendingStatePending')
-              Icon(Icons.schedule, size: 13, color: color)
+              Icon(CupertinoIcons.clock, size: 12, color: color)
             else if (sending?['@type'] == 'messageSendingStateFailed')
-              Icon(Icons.error, size: 14, color: c.attentionFg)
+              Icon(CupertinoIcons.exclamationmark_circle_fill, size: 14, color: c.attentionFg)
             else
-              Icon((message['id'] as int) <= lastRead ? Icons.done_all : Icons.done, size: 15, color: c.historyOutIconFg),
+              DoubleCheck(read: (message['id'] as int) <= lastRead, color: c.historyOutIconFg),
           ],
         ]);
-    final reserve = 42.0 + (out ? 20 : 0) + (marks.isEmpty ? 0 : 9.0 * marks.length) + (views != null && channel ? 52 : 0);
+    final reserve = 40.0 + (out ? 22 : 0) + (marks.isEmpty ? 0 : 8.0 * marks.length) + (views != null && channel ? 46 : 0);
 
     // --- содержимое ---
     final children = <Widget>[];
@@ -114,7 +125,11 @@ class MessageBubble extends StatelessWidget {
         child: Text(name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: peerColor(context, channel ? chat['id'] as int : senderKey))),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+              color: peerColor(context, channel ? chat['id'] as int : senderKey),
+            )),
       ));
     }
     final fwd = message['forward_info'] as TdObject?;
@@ -126,70 +141,76 @@ class MessageBubble extends StatelessWidget {
             const TextSpan(text: 'Переслано от '),
             TextSpan(text: _originName(fwd['origin'] as TdObject?), style: const TextStyle(fontWeight: FontWeight.w600)),
           ]),
-          style: TextStyle(fontSize: 13.5, color: out ? c.msgOutServiceFg : c.msgInServiceFg),
+          style: TextStyle(fontSize: 14, color: out ? c.msgOutServiceFg : c.msgInServiceFg),
         ),
       ));
     }
     if ((message['reply_to'] as TdObject?)?['@type'] == 'messageReplyToMessage') {
       final r = replyTo;
-      final rKey = r == null ? 0 : (((r['sender_id'] as TdObject?)?['user_id'] ?? (r['sender_id'] as TdObject?)?['chat_id'] ?? 0) as int);
-      final barColor = r == null || out ? (out ? c.msgOutReplyBarColor : c.msgInReplyBarColor) : peerColor(context, rKey);
+      final rSender = r?['sender_id'] as TdObject?;
+      final rKey = (rSender?['user_id'] ?? rSender?['chat_id'] ?? 0) as int;
+      final bar = r == null || out ? (out ? c.msgOutReplyBarColor : c.msgInReplyBarColor) : peerColor(context, rKey);
       children.add(Container(
-        margin: inset.copyWith(bottom: 4, top: isMedia ? 7 : 2),
-        padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
+        margin: inset.copyWith(bottom: 5, top: isMedia ? 7 : 2),
+        padding: const EdgeInsets.fromLTRB(9, 4, 9, 4),
         decoration: BoxDecoration(
-          color: barColor.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(5),
-          border: Border(left: BorderSide(color: barColor, width: 3)),
+          color: bar.withValues(alpha: 0.13),
+          borderRadius: BorderRadius.circular(6),
+          border: Border(left: BorderSide(color: bar, width: 3)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(r == null ? 'Сообщение' : svc.senderName(r['sender_id'] as TdObject?),
+          Text(r == null ? 'Сообщение' : svc.senderName(rSender),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: barColor)),
+              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: bar)),
           Text(r == null ? '…' : contentPreview(r['content'] as TdObject?).replaceAll('\n', ' '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 13.5, color: out ? c.historyTextOutFg : c.historyTextInFg)),
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, color: textColor)),
         ]),
       ));
     }
 
-    final textColor = out ? c.historyTextOutFg : c.historyTextInFg;
     children.addAll(_media(context, content, textColor, out));
     if (hasText) {
       children.add(Padding(
         padding: inset,
         child: Text.rich(
           TextSpan(children: [
-            TextSpan(text: contentText(content)),
-            if (reactions.isEmpty) WidgetSpan(child: SizedBox(width: reserve, height: 12)),
+            ...RichMessageText.spans(context, formatted, linkColor: linkColor, textColor: textColor),
+            if (reactions.isEmpty && content?['link_preview'] == null) WidgetSpan(child: SizedBox(width: reserve, height: 12)),
           ]),
-          style: TextStyle(fontSize: 15, color: textColor, height: 1.3),
+          style: TextStyle(fontSize: 17, color: textColor, height: 1.28),
         ),
       ));
-    } else if (!isMedia && !isSticker && reactions.isEmpty) {
+    } else if (!isMedia && !isSticker && reactions.isEmpty && type != 'messageVoiceNote') {
       children.add(SizedBox(width: reserve, height: 14));
     }
+    final preview = content?['link_preview'] as TdObject?;
+    if (preview != null) children.add(_LinkPreview(preview: preview, out: out));
+    if (type == 'messageVoiceNote' && reactions.isEmpty) children.add(const SizedBox(height: 14));
+
     if (reactions.isNotEmpty) {
       children.add(Padding(
         padding: EdgeInsets.fromLTRB(isMedia ? 10 : 0, 6, reserve, isMedia ? 8 : 0),
-        child: Wrap(spacing: 5, runSpacing: 5, children: [
+        child: Wrap(spacing: 6, runSpacing: 6, children: [
           for (final r in reactions)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              padding: const EdgeInsets.fromLTRB(7, 4, 9, 4),
               decoration: BoxDecoration(
                 color: r.chosen
                     ? (out ? c.historyOutIconFg : c.windowActiveTextFg)
-                    : (out ? c.msgOutReplyBarColor : c.msgInReplyBarColor).withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(12),
+                    : (out ? c.msgOutReplyBarColor : c.windowActiveTextFg).withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: Text('${r.emoji} ${compactCount(r.count)}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: r.chosen ? c.windowBg : (out ? c.msgOutServiceFg : c.msgInServiceFg),
-                  )),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(r.emoji, style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 4),
+                Text(compactCount(r.count),
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: r.chosen ? Colors.white : (out ? c.msgOutServiceFg : c.windowActiveTextFg),
+                    )),
+              ]),
             ),
         ]),
       ));
@@ -197,33 +218,58 @@ class MessageBubble extends StatelessWidget {
 
     final onMedia = (isMedia && !hasText && reactions.isEmpty) || isSticker;
     final time = Positioned(
-      right: onMedia ? 6 : 9,
-      bottom: onMedia ? 6 : 5,
+      right: onMedia ? 6 : 10,
+      bottom: onMedia ? 6 : 6,
       child: onMedia
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(10)),
               child: timeRow(Colors.white),
             )
           : timeRow(timeColor),
     );
 
-    final body = Stack(children: [
+    Widget body = Stack(children: [
       Padding(
         padding: onMedia
             ? EdgeInsets.zero
             : isMedia
-                ? const EdgeInsets.only(bottom: 22)
-                : const EdgeInsets.fromLTRB(11, 7, 11, 7),
+                ? const EdgeInsets.only(bottom: 24)
+                : const EdgeInsets.fromLTRB(12, 7, 12, 7),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: children),
       ),
       time,
     ]);
 
+    if (comments) {
+      final count = replyInfo['reply_count'] as int? ?? 0;
+      body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        body,
+        Container(height: 0.5, color: c.inputBorderFg),
+        InkWell(
+          onTap: onComments,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+            child: Row(children: [
+              Icon(CupertinoIcons.chat_bubble, size: 22, color: c.windowActiveTextFg),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  count == 0 ? 'Прокомментировать' : '$count ${plural(count, 'комментарий', 'комментария', 'комментариев')}',
+                  style: TextStyle(fontSize: 16, color: c.windowActiveTextFg, fontWeight: FontWeight.w500),
+                ),
+              ),
+              Icon(CupertinoIcons.chevron_right, size: 18, color: c.windowActiveTextFg),
+            ]),
+          ),
+        ),
+      ]);
+    }
+
     final screen = MediaQuery.sizeOf(context).width;
-    final maxW = (screen - (avatarSlot ? 44 : 0)) * (isMedia ? 0.78 : 0.82);
+    final maxW = (screen - (avatarSlot ? 44 : 0) - (onForward != null ? 44 : 0)) * (isMedia || comments ? 0.86 : 0.8);
     Widget bubble = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxW, minWidth: 64),
+      constraints: BoxConstraints(maxWidth: maxW, minWidth: comments ? maxW : 70),
       child: isSticker
           ? body
           : CustomPaint(
@@ -233,12 +279,33 @@ class MessageBubble extends StatelessWidget {
     );
     if (isDeleted && s.semiTransparentDeletedMessages) bubble = Opacity(opacity: 0.55, child: bubble);
 
+    final row = Row(
+      mainAxisAlignment: out ? MainAxisAlignment.end : MainAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Flexible(child: bubble),
+        if (onForward != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 4),
+            child: GestureDetector(
+              onTap: onForward,
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(color: c.msgServiceBg, shape: BoxShape.circle),
+                child: const Icon(CupertinoIcons.arrowshape_turn_up_right_fill, color: Colors.white, size: 17),
+              ),
+            ),
+          ),
+      ],
+    );
+
     return GestureDetector(
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(out ? 50 : (avatarSlot ? 0 : 10), 1, out ? 10 : 40, tail ? 6 : 1),
-        child: Align(alignment: out ? Alignment.centerRight : Alignment.centerLeft, child: bubble),
+        padding: EdgeInsets.fromLTRB(out ? 50 : (avatarSlot ? 0 : 10), 1, out ? 10 : 30, tail ? 6 : 1),
+        child: row,
       ),
     );
   }
@@ -261,7 +328,7 @@ class MessageBubble extends StatelessWidget {
       for (final r in list.cast<TdObject>())
         (
           emoji: ((r['type'] as TdObject?)?['emoji'] as String?) ??
-              ((r['type'] as TdObject?)?['@type'] == 'reactionTypePaid' ? '⭐' : '❤'),
+              ((r['type'] as TdObject?)?['@type'] == 'reactionTypePaid' ? '⭐' : '❤️'),
           count: r['total_count'] as int? ?? 0,
           chosen: r['is_chosen'] == true,
         ),
@@ -302,54 +369,42 @@ class MessageBubble extends StatelessWidget {
         final dur = media['duration'] as int? ?? 0;
         final w = (media['width'] as int? ?? 16).toDouble();
         final h = (media['height'] as int? ?? 9).toDouble();
+        final size = ((media['video'] ?? media['animation']) as TdObject?)?['size'] as int?;
         final player = Stack(fit: StackFit.expand, children: [
           if (thumb != null) TdImage(thumb) else const ColoredBox(color: Colors.black26),
           Center(
             child: Container(
-              width: 46,
-              height: 46,
+              width: 50,
+              height: 50,
               decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-              child: const Icon(Icons.play_arrow, color: Colors.white, size: 30),
+              child: const Icon(CupertinoIcons.play_fill, color: Colors.white, size: 24),
             ),
           ),
           Positioned(
-            left: 7,
-            top: 7,
+            left: 8,
+            top: 8,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(8)),
-              child: Text(content['@type'] == 'messageAnimation' ? 'GIF' : duration(dur),
-                  style: const TextStyle(color: Colors.white, fontSize: 12)),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(9)),
+              child: Text(
+                content['@type'] == 'messageAnimation'
+                    ? 'GIF'
+                    : '${duration(dur)}${size != null ? '\n${(size / (1 << 20)).toStringAsFixed(1)} МБ' : ''}',
+                style: const TextStyle(color: Colors.white, fontSize: 12.5, height: 1.25),
+              ),
             ),
           ),
         ]);
-        if (note) return [ClipOval(child: SizedBox(width: 200, height: 200, child: player))];
+        if (note) return [ClipOval(child: SizedBox(width: 220, height: 220, child: player))];
         return [AspectRatio(aspectRatio: h == 0 ? 16 / 9 : (w / h).clamp(0.6, 1.8), child: player)];
       case 'messageVoiceNote':
-        final dur = (content!['voice_note'] as TdObject)['duration'] as int? ?? 0;
         return [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-              child: const Icon(Icons.play_arrow, color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 10),
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                for (var i = 0; i < 26; i++)
-                  Container(
-                    width: 2.5,
-                    height: 4.0 + ((i * 7 + dur) % 13),
-                    margin: const EdgeInsets.only(right: 1.5),
-                    decoration: BoxDecoration(color: accent.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(1)),
-                  ),
-              ]),
-              const SizedBox(height: 3),
-              Text(duration(dur), style: TextStyle(fontSize: 12.5, color: sub)),
-            ]),
-          ]),
+          VoiceNoteView(
+            voice: content!['voice_note'] as TdObject,
+            accent: accent,
+            inactive: accent.withValues(alpha: 0.35),
+            timeColor: sub,
+          ),
         ];
       case 'messageDocument':
       case 'messageAudio':
@@ -360,10 +415,10 @@ class MessageBubble extends StatelessWidget {
         return [
           Row(mainAxisSize: MainAxisSize.min, children: [
             Container(
-              width: 42,
-              height: 42,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-              child: Icon(content['@type'] == 'messageAudio' ? Icons.music_note : Icons.insert_drive_file_outlined,
+              child: Icon(content['@type'] == 'messageAudio' ? CupertinoIcons.music_note_2 : CupertinoIcons.doc_fill,
                   color: Colors.white, size: 22),
             ),
             const SizedBox(width: 10),
@@ -372,26 +427,106 @@ class MessageBubble extends StatelessWidget {
                 Text(name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: textColor)),
                 const SizedBox(height: 2),
-                Text(_size(size), style: TextStyle(fontSize: 12.5, color: sub)),
+                Text(_size(size), style: TextStyle(fontSize: 13, color: sub)),
               ]),
             ),
           ]),
+          const SizedBox(height: 14),
         ];
       case 'messageText':
       case null:
         return [];
       default:
         if (contentText(content).isNotEmpty) return [];
-        return [Text(contentPreview(content), style: TextStyle(fontSize: 15, color: textColor))];
+        return [Text(contentPreview(content), style: TextStyle(fontSize: 17, color: textColor))];
     }
   }
 
   static String _size(int b) {
-    if (b < 1024) return '$b B';
-    if (b < 1 << 20) return '${(b / 1024).toStringAsFixed(1)} KB';
-    return '${(b / (1 << 20)).toStringAsFixed(1)} MB';
+    if (b < 1024) return '$b Б';
+    if (b < 1 << 20) return '${(b / 1024).toStringAsFixed(1)} КБ';
+    return '${(b / (1 << 20)).toStringAsFixed(1)} МБ';
+  }
+}
+
+/// Превью ссылки (linkPreview TDLib).
+class _LinkPreview extends StatelessWidget {
+  const _LinkPreview({required this.preview, required this.out});
+  final TdObject preview;
+  final bool out;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.ayu;
+    final bar = out ? c.msgOutReplyBarColor : c.msgInReplyBarColor;
+    final textColor = out ? c.historyTextOutFg : c.historyTextInFg;
+    final type = preview['type'] as TdObject?;
+    final typeName = type?['@type'] as String? ?? '';
+    final site = preview['site_name'] as String? ?? '';
+    final title = preview['title'] as String? ?? '';
+    final desc = preview['description'] as TdObject?;
+    final url = preview['url'] as String? ?? '';
+    final isChat = typeName.contains('Chat') || typeName.contains('Channel') || typeName.contains('Supergroup');
+
+    TdObject? thumbFile;
+    final photo = (type?['photo'] ?? type?['chat_photo']) as TdObject?;
+    final sizes = (photo?['sizes'] as List?)?.cast<TdObject>();
+    if (sizes != null && sizes.isNotEmpty) thumbFile = (sizes.first['photo'] ?? sizes.first['file']) as TdObject?;
+    thumbFile ??= (photo?['small']) as TdObject?;
+
+    return GestureDetector(
+      onTap: () => Links.open(context, url),
+      child: Container(
+        margin: const EdgeInsets.only(top: 6, bottom: 2),
+        decoration: BoxDecoration(
+          color: bar.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(7),
+          border: Border(left: BorderSide(color: bar, width: 3)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 8, 8),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (site.isNotEmpty) Text(site, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: bar)),
+                  if (title.isNotEmpty) Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: textColor)),
+                  if (desc != null && (desc['text'] as String? ?? '').isNotEmpty)
+                    Text.rich(
+                      TextSpan(
+                        children: RichMessageText.spans(context, desc,
+                            linkColor: out ? c.historyLinkOutFg : c.historyLinkInFg, textColor: textColor),
+                      ),
+                      maxLines: 8,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 15, color: textColor, height: 1.25),
+                    ),
+                ]),
+              ),
+              if (thumbFile != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: TdImage(thumbFile, width: 54, height: 54),
+                  ),
+                ),
+            ]),
+          ),
+          if (isChat) ...[
+            Container(height: 0.5, color: bar.withValues(alpha: 0.4)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              child: Text(typeName.contains('Channel') || (type?['type'] as TdObject?)?['is_channel'] == true ? 'ПЕРЕЙТИ В КАНАЛ' : 'ОТКРЫТЬ',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: bar, letterSpacing: 0.3)),
+            ),
+          ],
+        ]),
+      ),
+    );
   }
 }
 
@@ -403,42 +538,40 @@ String compactCount(int n) {
   return '${f(n / 1e6)}M';
 }
 
-/// Пузырь tdesktop: скругление и маленький «хвостик» у последнего сообщения серии.
+/// Пузырь iOS: большое скругление и изогнутый «хвостик» у последнего сообщения серии.
 class _BubblePainter extends CustomPainter {
   _BubblePainter({required this.color, required this.out, required this.tail});
   final Color color;
   final bool out;
   final bool tail;
 
-  static const radius = 14.0;
+  static const radius = 18.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, h = size.height;
     const r = radius;
-    final small = tail ? 0.0 : r;
     final path = Path();
-    if (out) {
+    if (!tail) {
+      path.addRRect(RRect.fromLTRBR(0, 0, w, h, const Radius.circular(r)));
+    } else if (out) {
       path.addRRect(RRect.fromLTRBAndCorners(0, 0, w, h,
           topLeft: const Radius.circular(r), topRight: const Radius.circular(r),
-          bottomLeft: const Radius.circular(r), bottomRight: Radius.circular(small)));
-      if (tail) {
-        path.moveTo(w, h - 10);
-        path.quadraticBezierTo(w + 1, h - 1, w + 7, h);
-        path.lineTo(w, h);
-        path.close();
-      }
+          bottomLeft: const Radius.circular(r), bottomRight: const Radius.circular(6)));
+      path.moveTo(w - 8, h - 16);
+      path.cubicTo(w - 6, h - 4, w + 2, h - 1, w + 7, h);
+      path.cubicTo(w + 1, h + 0.5, w - 6, h, w - 12, h - 2);
+      path.close();
     } else {
       path.addRRect(RRect.fromLTRBAndCorners(0, 0, w, h,
           topLeft: const Radius.circular(r), topRight: const Radius.circular(r),
-          bottomLeft: Radius.circular(small), bottomRight: const Radius.circular(r)));
-      if (tail) {
-        path.moveTo(0, h - 10);
-        path.quadraticBezierTo(-1, h - 1, -7, h);
-        path.lineTo(0, h);
-        path.close();
-      }
+          bottomLeft: const Radius.circular(6), bottomRight: const Radius.circular(r)));
+      path.moveTo(8, h - 16);
+      path.cubicTo(6, h - 4, -2, h - 1, -7, h);
+      path.cubicTo(-1, h + 0.5, 6, h, 12, h - 2);
+      path.close();
     }
+    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.35), 0.6, false);
     canvas.drawPath(path, Paint()..color = color);
   }
 

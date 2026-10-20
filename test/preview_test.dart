@@ -74,6 +74,7 @@ void main() {
     const fonts = 'assets/fonts';
     await _font('OpenSans', ['$fonts/OpenSans-Regular.ttf', '$fonts/OpenSans-Semibold.ttf', '$fonts/OpenSans-Bold.ttf']);
     await _font('NotoColorEmoji', ['/usr/share/fonts/google-noto-color-emoji-fonts/Noto-COLRv1.ttf']);
+    await _font('packages/cupertino_icons/CupertinoIcons', ['/home/Arbkrava/.pub-cache/hosted/pub.dev/cupertino_icons-1.0.9/assets/CupertinoIcons.ttf']);
     await _font('MaterialIcons', ['${Platform.environment['HOME']}/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf']);
     final svc = TdService.instance;
     svc.myId = 1;
@@ -143,6 +144,32 @@ void main() {
         _msg(3, 'Спасибо!', out: true, reply: 2),
         _msg(4, 'Это сообщение удалили, но AyuGram его сохранил', user: 78),
         _msg(5, 'Ну что, завтра идём?', edit: 1),
+        {
+          ..._msg(6, '', out: true),
+          'content': {
+            '@type': 'messageVoiceNote',
+            'voice_note': {'duration': 14, 'waveform': 'T9q8e+9cXxpbMiMAAAQ5ysmKd++da1xjU2YEAEAgRrlY8ea9942rBA==', 'voice': {'id': 999, 'size': 1}},
+          },
+        },
+        {
+          ..._msg(7, ''),
+          'content': {
+            '@type': 'messageText',
+            'text': {
+              'text': 'https://t.me/Geofrontio в тгк игра',
+              'entities': [
+                {'offset': 0, 'length': 25, 'type': {'@type': 'textEntityTypeUrl'}},
+              ],
+            },
+            'link_preview': {
+              'url': 'https://t.me/Geofrontio',
+              'site_name': 'Telegram',
+              'title': 'Geofront',
+              'description': {'text': 'Официальный тгк Geofront\nСвязь со мной @rxsaha', 'entities': [{'offset': 39, 'length': 7, 'type': {'@type': 'textEntityTypeMention'}}]},
+              'type': {'@type': 'linkPreviewTypeChannel'},
+            },
+          },
+        },
       ];
       Widget row(int i) {
         final m = msgs[i];
@@ -183,12 +210,21 @@ void main() {
       t,
       chatMock(chat, [
         MessageBubble(
-          message: _msg(1, 'Друзі, 10 секунд виділіть для допомоги Захисникам. Воїни 4 ОВМБр потребують радіостанції',
-              views: 95400, reactions: [_r('🙏', 149), _r('👍', 30), _r('❤', 26)]),
+          message: {
+            ..._msg(1, 'Друзі, 10 секунд виділіть для допомоги Захисникам. Воїни 4 ОВМБр потребують радіостанції',
+                views: 95400, reactions: [_r('🙏', 149), _r('👍', 30), _r('❤', 26)]),
+            'interaction_info': {
+              'view_count': 95400,
+              'reactions': {'reactions': [_r('🙏', 149), _r('👍', 30), _r('❤', 26)]},
+              'reply_info': {'reply_count': 0},
+            },
+          },
           chat: chat,
           isDeleted: false,
           isEdited: false,
           showSender: true,
+          onComments: () {},
+          onForward: () {},
         ),
         MessageBubble(
           message: _msg(2, 'Перша в історії: українка Ярослава Магучіх стала першою у світі абсолютною чемпіонкою',

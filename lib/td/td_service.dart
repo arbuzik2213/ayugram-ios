@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'dart:ui' show instantiateImageCodec;
+
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -146,6 +149,7 @@ class TdService extends ChangeNotifier {
         fileNotifier(f['id'] as int).value = f;
       case 'updateNewMessage':
         final m = u['message'] as TdObject;
+        unawaited(_maybeNotify(m));
         if (_shouldCache(m['chat_id'] as int)) await _store.cacheMessages([m]);
         _chatEvents.add({...u, 'chat_id': m['chat_id']});
       case 'updateMessageContent':
@@ -406,13 +410,26 @@ class TdService extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   void setAppActive(bool active) {
+    final wasActive = _appActive;
     _appActive = active;
+    if (active && !wasActive && authState?['@type'] == 'authorizationStateReady') {
+      // После сна iOS соединение могло умереть — просим TDLib переподключиться.
+      td.fire({'@type': 'setNetworkType', 'type': {'@type': 'networkTypeOther'}});
+    }
     _applyOnline();
   }
+
+  bool? _sentOnline;
 
   void _applyOnline() {
     if (authState?['@type'] != 'authorizationStateReady') return;
     final online = _appActive && _settings.sendOnlinePackets;
+    if (online && _sentOnline != true) {
+      // Выключили призрака: TDLib мог считать статус уже «онлайн» и промолчать,
+      // поэтому явно сбрасываем и ставим заново — сервер получит updateStatus(online).
+      td.fire({'@type': 'setOption', 'name': 'online', 'value': {'@type': 'optionValueBoolean', 'value': false}});
+    }
+    _sentOnline = online;
     td.fire({'@type': 'setOption', 'name': 'online', 'value': {'@type': 'optionValueBoolean', 'value': online}});
   }
 
@@ -435,8 +452,18 @@ class TdService extends ChangeNotifier {
     Future.delayed(const Duration(milliseconds: 500), _forceOffline);
   }
 
-  Future<void> openChat(int chatId) => td.send({'@type': 'openChat', 'chat_id': chatId}).catchError((_) => <String, dynamic>{});
-  Future<void> closeChat(int chatId) => td.send({'@type': 'closeChat', 'chat_id': chatId}).catchError((_) => <String, dynamic>{});
+  /// Открытый сейчас чат (для него не показываем уведомления).
+  int? openedChatId;
+
+  Future<void> openChat(int chatId) {
+    openedChatId = chatId;
+    return td.send({'@type': 'openChat', 'chat_id': chatId}).catchError((_) => <String, dynamic>{});
+  }
+
+  Future<void> closeChat(int chatId) {
+    if (openedChatId == chatId) openedChatId = null;
+    return td.send({'@type': 'closeChat', 'chat_id': chatId}).catchError((_) => <String, dynamic>{});
+  }
 
   /// Отметка о прочтении. В режиме призрака не отправляется.
   void viewMessages(int chatId, List<int> ids, {bool force = false}) {
@@ -487,31 +514,145 @@ class TdService extends ChangeNotifier {
     return options;
   }
 
-  Future<TdObject> sendText(int chatId, String text, {int? replyTo}) {
+  Future<TdObject> _send(int chatId, TdObject content, {int? replyTo, int sizeBytes = 0}) {
     return td.send({
       '@type': 'sendMessage',
       'chat_id': chatId,
       if (replyTo != null) 'reply_to': {'@type': 'inputMessageReplyToMessage', 'message_id': replyTo},
-      'options': sendOptions(),
-      'input_message_content': {
-        '@type': 'inputMessageText',
-        'text': {'@type': 'formattedText', 'text': text, 'entities': []},
-      },
+      'options': sendOptions(sizeBytes: sizeBytes),
+      'input_message_content': content,
     });
   }
 
-  Future<TdObject> sendPhoto(int chatId, String path, {String caption = ''}) async {
+  Future<TdObject> sendText(int chatId, String text, {int? replyTo}) => _send(chatId, {
+        '@type': 'inputMessageText',
+        'text': {'@type': 'formattedText', 'text': text, 'entities': []},
+      }, replyTo: replyTo);
+
+  /// Копирует файл к себе: временные файлы галереи iOS могут исчезнуть до загрузки.
+  Future<String> _persist(String path, String prefix) async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory('${docs.path}/outgoing');
+    await dir.create(recursive: true);
+    final ext = path.contains('.') ? path.substring(path.lastIndexOf('.')) : '';
+    final target = '${dir.path}/$prefix${DateTime.now().microsecondsSinceEpoch}$ext';
+    await File(path).copy(target);
+    return target;
+  }
+
+  Future<TdObject> sendPhoto(int chatId, String path, {String caption = '', int? replyTo}) async {
+    final local = await _persist(path, 'photo_');
+    final bytes = await File(local).readAsBytes();
+    var w = 0, h = 0;
+    try {
+      final codec = await instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      w = frame.image.width;
+      h = frame.image.height;
+    } catch (_) {}
+    return _send(chatId, {
+      '@type': 'inputMessagePhoto',
+      'photo': {'@type': 'inputFileLocal', 'path': local},
+      'width': w,
+      'height': h,
+      'added_sticker_file_ids': [],
+      'caption': {'@type': 'formattedText', 'text': caption, 'entities': []},
+    }, replyTo: replyTo, sizeBytes: bytes.length);
+  }
+
+  Future<TdObject> sendVoice(int chatId, String path, int seconds, String waveform, {int? replyTo}) async {
     final size = await File(path).length();
-    return td.send({
-      '@type': 'sendMessage',
+    return _send(chatId, {
+      '@type': 'inputMessageVoiceNote',
+      'voice_note': {'@type': 'inputFileLocal', 'path': path},
+      'duration': seconds,
+      'waveform': waveform,
+    }, replyTo: replyTo, sizeBytes: size);
+  }
+
+  /// Статус «записывает голосовое». В режиме призрака не отправляется.
+  void sendRecordingAction(int chatId, {bool cancel = false}) {
+    if (!_settings.sendUploadProgress) return;
+    td.fire({
+      '@type': 'sendChatAction',
       'chat_id': chatId,
-      'options': sendOptions(sizeBytes: size),
-      'input_message_content': {
-        '@type': 'inputMessagePhoto',
-        'photo': {'@type': 'inputFileLocal', 'path': path},
-        'caption': {'@type': 'formattedText', 'text': caption, 'entities': []},
-      },
+      'action': cancel ? null : {'@type': 'chatActionRecordingVoiceNote'},
     });
+  }
+
+  Future<void> forward(int toChatId, int fromChatId, List<int> ids) async {
+    await td.send({
+      '@type': 'forwardMessages',
+      'chat_id': toChatId,
+      'from_chat_id': fromChatId,
+      'message_ids': ids,
+      'options': sendOptions(),
+      'send_copy': false,
+      'remove_caption': false,
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Локальные уведомления AyuGram
+  // ---------------------------------------------------------------------------
+
+  final notifications = FlutterLocalNotificationsPlugin();
+  bool _notificationsReady = false;
+
+  Future<void> initNotifications() async {
+    if (_notificationsReady) return;
+    await notifications.initialize(
+      settings: const InitializationSettings(
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
+      ),
+    );
+    _notificationsReady = true;
+  }
+
+  /// Запросить разрешение iOS. Возвращает, разрешил ли пользователь.
+  Future<bool> requestNotificationPermission() async {
+    await initNotifications();
+    final ios = notifications.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+    return await ios?.requestPermissions(alert: true, badge: true, sound: true) ?? false;
+  }
+
+  int _notifyId = 0;
+
+  Future<void> _maybeNotify(TdObject m) async {
+    if (!_settings.notificationsEnabled || !_notificationsReady) return;
+    if (m['is_outgoing'] == true) return;
+    final chatId = m['chat_id'] as int;
+    if (_appActive && openedChatId == chatId) return;
+    final chat = chats[chatId];
+    if (chat == null || isMuted(chat)) return;
+    final title = chat['title'] as String? ?? '';
+    final sender = isGroup(chat) ? '${senderName(m['sender_id'] as TdObject?)}: ' : '';
+    final body = _settings.streamerMode ? 'Новое сообщение' : '$sender${_previewOf(m['content'] as TdObject?)}';
+    await notifications.show(
+      id: _notifyId++,
+      title: _settings.streamerMode ? 'AyuGram' : title,
+      body: body,
+      notificationDetails: const NotificationDetails(iOS: DarwinNotificationDetails(presentSound: true, presentBadge: true)),
+    );
+  }
+
+  static String _previewOf(TdObject? c) {
+    final t = c?['text'] ?? c?['caption'];
+    final text = t is Map ? (t['text'] as String? ?? '') : '';
+    return switch (c?['@type']) {
+      'messageText' => text,
+      'messagePhoto' => text.isEmpty ? 'Фото' : 'Фото, $text',
+      'messageVideo' => text.isEmpty ? 'Видео' : 'Видео, $text',
+      'messageVoiceNote' => 'Голосовое сообщение',
+      'messageVideoNote' => 'Видеосообщение',
+      'messageSticker' => '${(c!['sticker'] as Map?)?['emoji'] ?? ''} Стикер',
+      'messageDocument' => 'Файл',
+      _ => text.isEmpty ? 'Сообщение' : text,
+    };
   }
 
   // ---------------------------------------------------------------------------

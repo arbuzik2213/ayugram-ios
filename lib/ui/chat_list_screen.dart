@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../ayu/ayu_settings.dart';
@@ -75,10 +76,10 @@ class _TabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.ayu;
     const tabs = [
-      (Icons.account_circle, 'Контакты'),
-      (Icons.call, 'Звонки'),
-      (Icons.chat_bubble, 'Чаты'),
-      (Icons.settings, 'Настройки'),
+      (CupertinoIcons.person_crop_circle_fill, 'Контакты'),
+      (CupertinoIcons.phone_fill, 'Звонки'),
+      (CupertinoIcons.chat_bubble_2_fill, 'Чаты'),
+      (CupertinoIcons.gear_alt_fill, 'Настройки'),
     ];
     Widget glass({required Widget child}) => Container(
           decoration: BoxDecoration(
@@ -152,7 +153,7 @@ class _TabBar extends StatelessWidget {
         const SizedBox(width: 10),
         GestureDetector(
           onTap: onSearch,
-          child: glass(child: SizedBox(width: 64, height: 64, child: Icon(Icons.search, size: 28, color: c.windowFg))),
+          child: glass(child: SizedBox(width: 64, height: 64, child: Icon(CupertinoIcons.search, size: 26, color: c.windowFg))),
         ),
       ]),
     );
@@ -307,7 +308,7 @@ class _ChatsTabState extends State<_ChatsTab> {
                   listenable: s,
                   builder: (context, _) => IconButton(
                     tooltip: 'Режим призрака',
-                    icon: Icon(s.isGhostModeActive ? Icons.visibility_off : Icons.visibility_outlined,
+                    icon: Icon(s.isGhostModeActive ? CupertinoIcons.eye_slash_fill : CupertinoIcons.eye,
                         color: s.isGhostModeActive ? c.windowActiveTextFg : c.windowFg),
                     onPressed: () {
                       final on = !s.isGhostModeActive;
@@ -322,7 +323,7 @@ class _ChatsTabState extends State<_ChatsTab> {
                   ),
                 ),
                 IconButton(
-                  icon: Icon(Icons.edit_square, color: c.windowFg),
+                  icon: Icon(CupertinoIcons.square_pencil, color: c.windowFg),
                   onPressed: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const SearchScreen(newMessage: true)),
@@ -332,6 +333,20 @@ class _ChatsTabState extends State<_ChatsTab> {
             ),
           ]),
         ),
+        if (!_editing)
+          GestureDetector(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
+            child: Container(
+              height: 40,
+              margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              decoration: BoxDecoration(color: c.filterInputBg, borderRadius: BorderRadius.circular(20)),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(CupertinoIcons.search, size: 19, color: c.placeholderFg),
+                const SizedBox(width: 6),
+                Text('Поиск', style: TextStyle(fontSize: 17, color: c.placeholderFg)),
+              ]),
+            ),
+          ),
         Expanded(
           child: ValueListenableBuilder<int>(
             valueListenable: _svc.chatListVersion,
@@ -444,7 +459,7 @@ class ChatRow extends StatelessWidget {
 
     Widget messageLine(int lines) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (forwarded)
-            Padding(padding: const EdgeInsets.only(right: 3, top: 1), child: Icon(Icons.shortcut, size: 16, color: c.dialogsTextFg)),
+            Padding(padding: const EdgeInsets.only(right: 3, top: 1), child: Icon(CupertinoIcons.arrowshape_turn_up_right_fill, size: 14, color: c.dialogsTextFg)),
           ?thumb,
           Expanded(child: Text(preview, maxLines: lines, overflow: TextOverflow.ellipsis, style: gray)),
         ]);
@@ -480,7 +495,7 @@ class ChatRow extends StatelessWidget {
           if (selected != null)
             Padding(
               padding: const EdgeInsets.only(left: 12),
-              child: Icon(selected! ? Icons.check_circle : Icons.radio_button_unchecked,
+              child: Icon(selected! ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
                   color: selected! ? c.windowActiveTextFg : c.menuIconFg),
             ),
           Padding(
@@ -515,13 +530,13 @@ class ChatRow extends StatelessWidget {
                       ),
                       if (svc.isVerified(chat)) const VerifiedBadge(size: 16),
                       if (muted)
-                        Padding(padding: const EdgeInsets.only(left: 4), child: Icon(Icons.volume_off, size: 15, color: c.dialogsTextFg)),
+                        Padding(padding: const EdgeInsets.only(left: 4), child: Icon(CupertinoIcons.speaker_slash_fill, size: 14, color: c.dialogsTextFg)),
                     ]),
                   ),
                   if (outgoing)
                     Padding(
                       padding: const EdgeInsets.only(right: 3, left: 4),
-                      child: Icon(read ? Icons.done_all : Icons.done, size: 17, color: c.dialogsSentIconFg),
+                      child: DoubleCheck(read: read, color: c.dialogsSentIconFg),
                     ),
                   if (last != null) Text(chatListTime(last['date'] as int), style: TextStyle(fontSize: 14.5, color: c.dialogsDateFg)),
                 ]),
@@ -534,7 +549,7 @@ class ChatRow extends StatelessWidget {
                   else if (svc.isPinned(chat))
                     Padding(
                       padding: const EdgeInsets.only(left: 6, bottom: 2),
-                      child: Transform.rotate(angle: 0.75, child: Icon(Icons.push_pin, size: 17, color: c.dialogsTextFg)),
+                      child: Icon(CupertinoIcons.pin_fill, size: 16, color: c.dialogsTextFg),
                     ),
                 ]),
               ]),
@@ -654,7 +669,7 @@ class _ArchiveRow extends StatelessWidget {
                   colors: [Color(0xff72d5fd), Color(0xff2a9ef1)],
                 ),
               ),
-              child: const Icon(Icons.archive, color: Colors.white, size: 28),
+              child: const Icon(CupertinoIcons.archivebox_fill, color: Colors.white, size: 27),
             ),
           ),
           Expanded(
@@ -946,7 +961,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     decoration: InputDecoration(
                       isCollapsed: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 11),
-                      prefixIcon: Icon(Icons.search, color: c.placeholderFg),
+                      prefixIcon: Icon(CupertinoIcons.search, color: c.placeholderFg),
                       hintText: widget.newMessage ? 'Имя, @юзернейм или номер' : 'Чаты, @юзернейм, номер',
                       hintStyle: TextStyle(color: c.placeholderFg, fontSize: 16),
                       border: InputBorder.none,
@@ -1177,7 +1192,7 @@ class _CallsTabState extends State<CallsTab> {
                                             color: missed ? c.attentionFg : c.windowFg,
                                           )),
                                       Row(children: [
-                                        Icon(out ? Icons.call_made : Icons.call_received, size: 14, color: c.windowSubTextFg),
+                                        Icon(out ? CupertinoIcons.phone_arrow_up_right : CupertinoIcons.phone_arrow_down_left, size: 14, color: c.windowSubTextFg),
                                         const SizedBox(width: 4),
                                         Text('$kind${video ? ' видео' : ''}${dur > 0 ? ' (${duration(dur)})' : ''}',
                                             style: TextStyle(fontSize: 14, color: c.windowSubTextFg)),

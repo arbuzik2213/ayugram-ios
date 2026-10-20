@@ -41,7 +41,8 @@ class _AyuAppState extends State<AyuApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    TdService.instance.setAppActive(state == AppLifecycleState.resumed);
+    // inactive — это шторка/пункт управления поверх приложения, оно всё ещё на экране.
+    TdService.instance.setAppActive(state == AppLifecycleState.resumed || state == AppLifecycleState.inactive);
   }
 
   void _maybeStart() {
@@ -49,6 +50,7 @@ class _AyuAppState extends State<AyuApp> with WidgetsBindingObserver {
     if (_started || s.apiId == null || s.apiHash == null) return;
     _started = true;
     TdService.instance.start();
+    if (s.notificationsEnabled) TdService.instance.initNotifications();
   }
 
   @override

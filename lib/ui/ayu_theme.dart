@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Палитры AyuGram Desktop: ночная — Telegram/Resources/night.tdesktop-theme,
@@ -150,14 +152,14 @@ class AyuColors extends ThemeExtension<AyuColors> {
     dialogsBgActive: Color(0xff419fd9),
     historyBg: Color(0xffdfe7ea),
     msgInBg: Color(0xffffffff),
-    msgOutBg: Color(0xffeffdde),
+    msgOutBg: Color(0xffe1fec6),
     historyTextInFg: Color(0xff000000),
     historyTextOutFg: Color(0xff000000),
-    historyLinkInFg: Color(0xff168acd),
-    historyLinkOutFg: Color(0xff168acd),
-    msgInDateFg: Color(0xffa0acb6),
-    msgOutDateFg: Color(0xff6db566),
-    historyOutIconFg: Color(0xff57b84c),
+    historyLinkInFg: Color(0xff007aff),
+    historyLinkOutFg: Color(0xff1d63b8),
+    msgInDateFg: Color(0xff8e8e93),
+    msgOutDateFg: Color(0xff4ba64f),
+    historyOutIconFg: Color(0xff4ba64f),
     msgInReplyBarColor: Color(0xff37a1de),
     msgOutReplyBarColor: Color(0xff5eb854),
     msgInServiceFg: Color(0xff168acd),
@@ -261,11 +263,102 @@ ThemeData buildAyuTheme(bool night) {
   );
 }
 
-/// Фон истории сообщений.
+/// Фон истории: градиент + свой «дудл»-узор (звёздочки, сердечки, кружки, самолётики).
 class AyuWallpaper extends StatelessWidget {
   const AyuWallpaper({super.key, required this.child});
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(color: context.ayu.historyBg, child: child);
+  Widget build(BuildContext context) {
+    final c = context.ayu;
+    final colors = c.dark
+        ? const [Color(0xff0e1621), Color(0xff16222f), Color(0xff0f1a26)]
+        : const [Color(0xffd9e8bd), Color(0xffaecf94), Color(0xffc9df9f)];
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+      ),
+      child: Stack(fit: StackFit.expand, children: [
+        RepaintBoundary(
+          child: CustomPaint(painter: _DoodlePainter(c.dark ? Colors.white.withValues(alpha: 0.05) : const Color(0x1f2e5a1c))),
+        ),
+        child,
+      ]),
+    );
+  }
+}
+
+class _DoodlePainter extends CustomPainter {
+  _DoodlePainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    const step = 64.0;
+    var seed = 7;
+    double rnd() {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    }
+
+    for (var y = -step / 2; y < size.height + step; y += step) {
+      for (var x = -step / 2 + ((y / step).round().isOdd ? step / 2 : 0); x < size.width + step; x += step) {
+        final cx = x + rnd() * 18, cy = y + rnd() * 18;
+        canvas.save();
+        canvas.translate(cx, cy);
+        canvas.rotate((rnd() - 0.5) * 1.2);
+        switch ((rnd() * 6).floor()) {
+          case 0: // звезда
+            final path = Path();
+            for (var i = 0; i < 10; i++) {
+              final r = i.isEven ? 9.0 : 4.0;
+              final a = -1.5708 + i * 0.6283;
+              final pt = Offset(r * _cos(a), r * _sin(a));
+              i == 0 ? path.moveTo(pt.dx, pt.dy) : path.lineTo(pt.dx, pt.dy);
+            }
+            canvas.drawPath(path..close(), p);
+          case 1: // сердечко
+            final path = Path()
+              ..moveTo(0, 7)
+              ..cubicTo(-12, -2, -6, -11, 0, -4)
+              ..cubicTo(6, -11, 12, -2, 0, 7);
+            canvas.drawPath(path, p);
+          case 2: // кружок
+            canvas.drawCircle(Offset.zero, 6, p);
+          case 3: // бумажный самолётик
+            final path = Path()
+              ..moveTo(-10, 0)
+              ..lineTo(10, -7)
+              ..lineTo(3, 8)
+              ..lineTo(0, 2)
+              ..close()
+              ..moveTo(0, 2)
+              ..lineTo(10, -7);
+            canvas.drawPath(path, p);
+          case 4: // волна
+            final path = Path()
+              ..moveTo(-10, 0)
+              ..quadraticBezierTo(-5, -6, 0, 0)
+              ..quadraticBezierTo(5, 6, 10, 0);
+            canvas.drawPath(path, p);
+          default: // облачко-сообщение
+            canvas.drawRRect(RRect.fromLTRBR(-9, -6, 9, 5, const Radius.circular(5)), p);
+            canvas.drawLine(const Offset(-4, 5), const Offset(-6, 9), p);
+        }
+        canvas.restore();
+      }
+    }
+  }
+
+  static double _sin(double a) => math.sin(a);
+  static double _cos(double a) => math.cos(a);
+
+  @override
+  bool shouldRepaint(_DoodlePainter old) => old.color != color;
 }
