@@ -5,7 +5,7 @@ import 'ayu/message_store.dart';
 import 'td/td_service.dart';
 import 'ui/auth_screen.dart';
 import 'ui/chat_list_screen.dart';
-import 'ui/widgets.dart';
+import 'ui/ayu_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,15 +51,11 @@ class _AyuAppState extends State<AyuApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    ThemeData theme(Brightness b) => ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: ayuAccent, brightness: b),
-          useMaterial3: true,
-        );
     return MaterialApp(
       title: 'AyuGram',
       debugShowCheckedModeBanner: false,
-      theme: theme(Brightness.light),
-      darkTheme: theme(Brightness.dark),
+      theme: buildAyuTheme(Brightness.light),
+      darkTheme: buildAyuTheme(Brightness.dark),
       home: !_started
           ? ApiKeysScreen(onDone: () => setState(_maybeStart))
           : ListenableBuilder(

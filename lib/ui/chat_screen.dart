@@ -13,6 +13,7 @@ import '../td/td_service.dart';
 import 'format.dart';
 import 'message_bubble.dart';
 import 'message_history_screen.dart';
+import 'ayu_theme.dart';
 import 'widgets.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -333,17 +334,22 @@ class _ChatScreenState extends State<ChatScreen> {
     return base;
   }
 
-  String? _replyText(TdObject m) {
+  TdObject? _replyObject(TdObject m) {
     final r = m['reply_to'] as TdObject?;
     if (r?['@type'] != 'messageReplyToMessage') return null;
     final i = _indexOf(r!['message_id'] as int);
-    if (i == -1) return '↩ ответ';
-    final orig = _messages[i];
-    return '${_svc.senderName(orig['sender_id'] as TdObject?)}: ${contentPreview(orig['content'] as TdObject?)}';
+    return i == -1 ? null : _messages[i];
   }
+
+  bool _sameSender(TdObject a, TdObject b) =>
+      jsonEncode(a['sender_id']) == jsonEncode(b['sender_id']) &&
+      dayHeader(a['date'] as int) == dayHeader(b['date'] as int) &&
+      !isServiceMessage(a['content'] as TdObject?) &&
+      !isServiceMessage(b['content'] as TdObject?);
 
   @override
   Widget build(BuildContext context) {
+    final c = context.ayu;
     final chat = _chat;
     final type = (chat['type'] as TdObject?)?['@type'];
     final isGroup = type == 'chatTypeBasicGroup' ||
@@ -366,21 +372,26 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     return Scaffold(
+      backgroundColor: c.wallpaper.first,
       appBar: AppBar(
         titleSpacing: 0,
         title: Row(children: [
-          Avatar(id: _chatId, title: chat['title'] as String? ?? '', photo: chat['photo'] as TdObject?, radius: 18),
-          const SizedBox(width: 10),
+          Avatar(id: _chatId, title: chat['title'] as String? ?? '', photo: chat['photo'] as TdObject?, radius: 21),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(chat['title'] as String? ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17)),
-              Text(_subtitle(), maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
+              Text(chat['title'] as String? ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: c.actionBarTitle)),
+              Text(_subtitle(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: c.actionBarSubtitle)),
             ]),
           ),
         ]),
         actions: [
           PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
             onSelected: (v) {
               switch (v) {
                 case 'read':
@@ -400,102 +411,118 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
-      body: Column(children: [
-        if (hidden > 0)
-          Material(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: InkWell(
+      body: AyuWallpaper(
+        child: Column(children: [
+          if (hidden > 0)
+            GestureDetector(
               onTap: () => setState(() => _showFiltered = true),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Text('Скрыто фильтрами: $hidden — показать', textAlign: TextAlign.center),
+              child: Container(
+                width: double.infinity,
+                color: c.windowBg,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text('Скрыто фильтрами: $hidden · показать',
+                    textAlign: TextAlign.center, style: TextStyle(color: c.blueText, fontSize: 15)),
               ),
             ),
+          Expanded(
+            child: ListView.builder(
+              controller: _scroll,
+              reverse: true,
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              itemCount: visible.length,
+              itemBuilder: (context, i) {
+                final m = visible[i];
+                final older = i + 1 < visible.length ? visible[i + 1] : null;
+                final newer = i > 0 ? visible[i - 1] : null;
+                final newDay = older == null || dayHeader(older['date'] as int) != dayHeader(m['date'] as int);
+                final bubble = MessageBubble(
+                  key: ValueKey(m['id']),
+                  message: m,
+                  chat: chat,
+                  isDeleted: _deleted.contains(m['id']),
+                  isEdited: _edited.contains(m['id']),
+                  showSender: isGroup && (older == null || !_sameSender(older, m)),
+                  tail: newer == null || !_sameSender(newer, m),
+                  replyTo: _replyObject(m),
+                  onLongPress: () => _messageMenu(m),
+                );
+                if (!newDay) return bubble;
+                return Column(children: [ServicePill(dayHeader(m['date'] as int)), bubble]);
+              },
+            ),
           ),
-        Expanded(
-          child: ListView.builder(
-            controller: _scroll,
-            reverse: true,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: visible.length,
-            itemBuilder: (context, i) {
-              final m = visible[i];
-              final older = i + 1 < visible.length ? visible[i + 1] : null;
-              final newDay = older == null || dayHeader(older['date'] as int) != dayHeader(m['date'] as int);
-              final sameSender = older != null &&
-                  jsonEncode(older['sender_id']) == jsonEncode(m['sender_id']) &&
-                  !newDay;
-              final bubble = MessageBubble(
-                key: ValueKey(m['id']),
-                message: m,
-                chat: chat,
-                isDeleted: _deleted.contains(m['id']),
-                isEdited: _edited.contains(m['id']),
-                showSender: isGroup && !sameSender,
-                replyPreview: _replyText(m),
-                onLongPress: () => _messageMenu(m),
-              );
-              if (!newDay) return bubble;
-              return Column(children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(dayHeader(m['date'] as int),
-                      style: TextStyle(fontSize: 13, color: Theme.of(context).hintColor, fontWeight: FontWeight.w600)),
-                ),
-                bubble,
-              ]);
-            },
-          ),
-        ),
-        _composer(),
-      ]),
+          _composer(),
+        ]),
+      ),
     );
   }
 
   Widget _composer() {
+    final c = context.ayu;
     final canSend = (_chat['permissions'] as TdObject?)?['can_send_basic_messages'] != false ||
         (_chat['type'] as TdObject?)?['@type'] == 'chatTypePrivate';
-    return SafeArea(
-      top: false,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (_replyTo != null)
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 6, 4, 0),
-            child: Row(children: [
-              const Icon(Icons.reply, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(contentPreview(_replyTo!['content'] as TdObject?), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-              IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _replyTo = null)),
-            ]),
-          ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
-          child: Row(children: [
-            IconButton(icon: const Icon(Icons.attach_file), onPressed: canSend ? _sendPhoto : null),
-            Expanded(
-              child: TextField(
-                controller: _input,
-                enabled: canSend,
-                minLines: 1,
-                maxLines: 6,
-                textCapitalization: TextCapitalization.sentences,
-                onChanged: (_) => _svc.sendTyping(_chatId),
-                decoration: InputDecoration(
-                  hintText: canSend
-                      ? (_settings.isGhostModeActive ? 'Сообщение 👻' : 'Сообщение')
-                      : 'Отправка недоступна',
-                  filled: true,
-                  isDense: true,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+    return Container(
+      color: c.panelBg,
+      child: SafeArea(
+        top: false,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (_replyTo != null)
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 6, 4, 0),
+              child: Row(children: [
+                Icon(Icons.reply, color: c.blueText),
+                const SizedBox(width: 12),
+                Container(width: 2, height: 36, color: c.blueText),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_svc.senderName(_replyTo!['sender_id'] as TdObject?),
+                        style: TextStyle(color: c.blueText, fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text(contentPreview(_replyTo!['content'] as TdObject?).replaceAll('\n', ' '),
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: c.text, fontSize: 14)),
+                  ]),
                 ),
-              ),
+                IconButton(icon: Icon(Icons.close, color: c.panelIcons), onPressed: () => setState(() => _replyTo = null)),
+              ]),
             ),
-            IconButton(icon: const Icon(Icons.send, color: ayuAccent), onPressed: canSend ? _send : null),
-          ]),
-        ),
-      ]),
+          ListenableBuilder(
+            listenable: _input,
+            builder: (context, _) {
+              final empty = _input.text.trim().isEmpty;
+              return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _input,
+                    enabled: canSend,
+                    minLines: 1,
+                    maxLines: 6,
+                    textCapitalization: TextCapitalization.sentences,
+                    onChanged: (_) => _svc.sendTyping(_chatId),
+                    style: TextStyle(fontSize: 18, color: c.text),
+                    decoration: InputDecoration(
+                      hintText: canSend ? (_settings.isGhostModeActive ? 'Сообщение 👻' : 'Сообщение') : 'Отправка недоступна',
+                      hintStyle: TextStyle(color: c.panelHint, fontSize: 18),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                  ),
+                ),
+                if (empty)
+                  IconButton(
+                    icon: Transform.rotate(angle: 0.8, child: Icon(Icons.attach_file, color: c.panelIcons, size: 26)),
+                    onPressed: canSend ? _sendPhoto : null,
+                  ),
+                IconButton(
+                  icon: Icon(Icons.send, color: empty ? c.panelIcons : c.panelSend, size: 26),
+                  onPressed: canSend && !empty ? _send : null,
+                ),
+                const SizedBox(width: 4),
+              ]);
+            },
+          ),
+        ]),
+      ),
     );
   }
 }

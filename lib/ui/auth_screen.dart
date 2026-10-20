@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../ayu/ayu_settings.dart';
 import '../td/td_client.dart';
 import '../td/td_service.dart';
+import 'ayu_theme.dart';
 
 /// Экран, если api_id/api_hash не были вшиты при сборке (--dart-define).
 class ApiKeysScreen extends StatefulWidget {
@@ -108,52 +109,74 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.ayu;
     final type = widget.state['@type'] as String;
     final (title, hint, label, keyboard, obscure) = switch (type) {
-      'authorizationStateWaitPhoneNumber' => ('Ваш телефон', 'Номер в международном формате', '+7 900 000-00-00', TextInputType.phone, false),
-      'authorizationStateWaitCode' => ('Код', _codeHint(), 'Код', TextInputType.number, false),
-      'authorizationStateWaitPassword' => ('Облачный пароль', _passwordHint(), 'Пароль', TextInputType.visiblePassword, true),
-      'authorizationStateWaitEmailAddress' => ('Почта', 'Telegram просит привязать e-mail', 'E-mail', TextInputType.emailAddress, false),
-      'authorizationStateWaitEmailCode' => ('Код из письма', 'Код отправлен на почту', 'Код', TextInputType.number, false),
-      'authorizationStateWaitRegistration' => ('Регистрация', 'Укажите имя', '', TextInputType.name, false),
+      'authorizationStateWaitPhoneNumber' => ('Ваш телефон', 'Проверьте код страны и введите свой номер телефона.', '+7 900 000 00 00', TextInputType.phone, false),
+      'authorizationStateWaitCode' => ('Введите код', _codeHint(), 'Код', TextInputType.number, false),
+      'authorizationStateWaitPassword' => ('Облачный пароль', _passwordHint(), 'Пароль', TextInputType.text, true),
+      'authorizationStateWaitEmailAddress' => ('Почта', 'Telegram просит привязать e-mail.', 'E-mail', TextInputType.emailAddress, false),
+      'authorizationStateWaitEmailCode' => ('Проверьте почту', 'Мы отправили код на вашу почту.', 'Код', TextInputType.number, false),
+      'authorizationStateWaitRegistration' => ('Ваше имя', 'Укажите имя и (по желанию) фамилию.', '', TextInputType.name, false),
       _ => ('AyuGram', 'Подключение…', '', TextInputType.text, false),
     };
     final waiting = !type.startsWith('authorizationStateWait') || type == 'authorizationStateWaitTdlibParameters';
 
+    InputDecoration deco(String l) => InputDecoration(
+          hintText: l,
+          hintStyle: TextStyle(color: c.panelHint),
+          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.divider)),
+          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.blueText, width: 2)),
+        );
+
     return Scaffold(
+      backgroundColor: c.windowBg,
+      floatingActionButton: waiting
+          ? null
+          : FloatingActionButton(
+              backgroundColor: c.fab,
+              foregroundColor: Colors.white,
+              onPressed: _busy ? null : _submit,
+              child: _busy
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
+                  : const Icon(Icons.arrow_forward),
+            ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+          padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
           children: [
             Center(child: Image.asset('assets/logo.png', width: 110, height: 110)),
-            const SizedBox(height: 16),
-            Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(hint, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).hintColor)),
             const SizedBox(height: 24),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: c.text)),
+            const SizedBox(height: 10),
+            Text(hint, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: c.grayText, height: 1.35)),
+            const SizedBox(height: 28),
             if (waiting)
-              const Center(child: CircularProgressIndicator())
+              Center(child: CircularProgressIndicator(color: c.blueText))
             else if (type == 'authorizationStateWaitRegistration') ...[
-              TextField(controller: _first, decoration: const InputDecoration(labelText: 'Имя')),
-              TextField(controller: _last, decoration: const InputDecoration(labelText: 'Фамилия')),
+              TextField(controller: _first, decoration: deco('Имя')),
+              TextField(controller: _last, decoration: deco('Фамилия (необязательно)')),
             ] else
               TextField(
+                // Новый ключ на каждом шаге: иначе iOS не меняет тип уже открытой клавиатуры.
+                key: ValueKey(type),
                 controller: _input,
                 autofocus: true,
                 keyboardType: keyboard,
                 obscureText: obscure,
-                decoration: InputDecoration(labelText: label),
+                autocorrect: false,
+                enableSuggestions: !obscure,
+                textAlign: obscure ? TextAlign.start : TextAlign.center,
+                style: TextStyle(fontSize: 20, color: c.text, letterSpacing: keyboard == TextInputType.number ? 6 : 0.5),
+                decoration: deco(label),
                 onSubmitted: (_) => _submit(),
               ),
             if (_error != null)
-              Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: const TextStyle(color: Colors.red))),
-            const SizedBox(height: 24),
-            if (!waiting)
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Далее'),
+              Padding(
+                padding: const EdgeInsets.only(top: 14),
+                child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xffe56555))),
               ),
           ],
         ),
