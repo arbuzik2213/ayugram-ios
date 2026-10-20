@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../ayu/ayu_settings.dart';
 import '../ayu/message_store.dart';
 import '../td/td_service.dart';
-import 'ayu_theme.dart';
 import 'widgets.dart';
 
 /// Настройки AyuGram — повторяют разделы ayu/ui/settings/settings_ayu.cpp.
@@ -15,10 +14,8 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AyuSettings.instance;
-    final c = context.ayu;
     return Scaffold(
-      backgroundColor: c.windowGray,
-      appBar: AppBar(title: const Text('AyuGram')),
+      appBar: AppBar(title: const Text('Настройки AyuGram')),
       body: ListenableBuilder(
         listenable: s,
         builder: (context, _) {
@@ -32,7 +29,7 @@ class SettingsScreen extends StatelessWidget {
                 },
               );
 
-          return ListView(padding: const EdgeInsets.only(top: 12), children: [
+          return ListView(padding: EdgeInsets.zero, children: [
             SettingsSection(title: 'Режим призрака', children: [
               CheckCell(title: 'Режим призрака', value: s.isGhostModeActive, onChanged: s.setGhostModeEnabled),
               sw('Не читать сообщения', !s.sendReadMessages, (v) => s.sendReadMessages = !v),
@@ -77,6 +74,7 @@ class SettingsScreen extends StatelessWidget {
               ),
             ]),
             SettingsSection(title: 'Кастомизация', children: [
+              sw('Ночной режим', s.nightMode, (v) => s.nightMode = v),
               TextCell(
                 title: 'Метка удалённых',
                 value: s.deletedMark,

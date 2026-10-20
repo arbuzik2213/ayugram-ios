@@ -1,159 +1,179 @@
 import 'package:flutter/material.dart';
 
-/// Цвета стандартных тем AyuGram4A (Telegram Android):
-/// светлая — defaultColors из ThemeColors.java, тёмная — assets/night.attheme.
+/// Палитры AyuGram Desktop: ночная — Telegram/Resources/night.tdesktop-theme,
+/// дневная — lib_ui/ui/colors.palette. Имена полей — ключи палитры tdesktop.
 @immutable
 class AyuColors extends ThemeExtension<AyuColors> {
   const AyuColors({
-    required this.actionBar,
-    required this.actionBarTitle,
-    required this.actionBarSubtitle,
+    required this.dark,
     required this.windowBg,
-    required this.windowGray,
-    required this.text,
-    required this.grayText,
-    required this.blueText,
-    required this.blueHeader,
-    required this.divider,
-    required this.unread,
-    required this.unreadMuted,
-    required this.chatName,
-    required this.chatMessage,
-    required this.chatNameMessage,
-    required this.chatDate,
-    required this.sentCheck,
-    required this.pinnedIcon,
-    required this.fab,
-    required this.menuBg,
-    required this.menuText,
-    required this.menuIcon,
-    required this.menuTop,
-    required this.inBubble,
-    required this.outBubble,
-    required this.textIn,
-    required this.textOut,
-    required this.inTime,
-    required this.outTime,
-    required this.outCheck,
-    required this.inReplyLine,
-    required this.outReplyLine,
-    required this.inReplyName,
-    required this.outReplyName,
-    required this.inForwardName,
-    required this.outForwardName,
-    required this.panelBg,
-    required this.panelHint,
-    required this.panelIcons,
-    required this.panelSend,
-    required this.wallpaper,
-    required this.serviceBg,
-    required this.switchOn,
+    required this.windowBgOver,
+    required this.windowBgRipple,
+    required this.windowFg,
+    required this.windowBoldFg,
+    required this.windowSubTextFg,
+    required this.windowActiveTextFg,
+    required this.activeLineFg,
+    required this.activeButtonBg,
+    required this.lightButtonFg,
+    required this.menuIconFg,
+    required this.attentionFg,
+    required this.dividerBg,
+    required this.inputBorderFg,
+    required this.filterInputBg,
+    required this.placeholderFg,
+    required this.dialogsTextFg,
+    required this.dialogsTextFgService,
+    required this.dialogsDateFg,
+    required this.dialogsUnreadBg,
+    required this.dialogsUnreadBgMuted,
+    required this.dialogsSentIconFg,
+    required this.dialogsDraftFg,
+    required this.dialogsBgActive,
+    required this.historyBg,
+    required this.msgInBg,
+    required this.msgOutBg,
+    required this.historyTextInFg,
+    required this.historyTextOutFg,
+    required this.historyLinkInFg,
+    required this.historyLinkOutFg,
+    required this.msgInDateFg,
+    required this.msgOutDateFg,
+    required this.historyOutIconFg,
+    required this.msgInReplyBarColor,
+    required this.msgOutReplyBarColor,
+    required this.msgInServiceFg,
+    required this.msgOutServiceFg,
+    required this.msgServiceBg,
+    required this.msgFileInBg,
+    required this.msgFileOutBg,
+    required this.historyComposeAreaBg,
+    required this.historyComposeIconFg,
+    required this.historySendIconFg,
+    required this.historyToDownBg,
+    required this.peerNames,
     required this.online,
   });
 
-  final Color actionBar, actionBarTitle, actionBarSubtitle;
-  final Color windowBg, windowGray, text, grayText, blueText, blueHeader, divider;
-  final Color unread, unreadMuted, chatName, chatMessage, chatNameMessage, chatDate, sentCheck, pinnedIcon, fab;
-  final Color menuBg, menuText, menuIcon, menuTop;
-  final Color inBubble, outBubble, textIn, textOut, inTime, outTime, outCheck;
-  final Color inReplyLine, outReplyLine, inReplyName, outReplyName, inForwardName, outForwardName;
-  final Color panelBg, panelHint, panelIcons, panelSend;
-  final List<Color> wallpaper;
-  final Color serviceBg, switchOn, online;
+  final bool dark;
+  final Color windowBg, windowBgOver, windowBgRipple, windowFg, windowBoldFg, windowSubTextFg, windowActiveTextFg;
+  final Color activeLineFg, activeButtonBg, lightButtonFg, menuIconFg, attentionFg, dividerBg, inputBorderFg;
+  final Color filterInputBg, placeholderFg;
+  final Color dialogsTextFg, dialogsTextFgService, dialogsDateFg, dialogsUnreadBg, dialogsUnreadBgMuted;
+  final Color dialogsSentIconFg, dialogsDraftFg, dialogsBgActive;
+  final Color historyBg, msgInBg, msgOutBg, historyTextInFg, historyTextOutFg, historyLinkInFg, historyLinkOutFg;
+  final Color msgInDateFg, msgOutDateFg, historyOutIconFg, msgInReplyBarColor, msgOutReplyBarColor;
+  final Color msgInServiceFg, msgOutServiceFg, msgServiceBg, msgFileInBg, msgFileOutBg;
+  final Color historyComposeAreaBg, historyComposeIconFg, historySendIconFg, historyToDownBg;
+  final List<Color> peerNames;
+  final Color online;
 
-  static const light = AyuColors(
-    actionBar: Color(0xff527da3),
-    actionBarTitle: Color(0xffffffff),
-    actionBarSubtitle: Color(0xffd5e8f7),
-    windowBg: Color(0xffffffff),
-    windowGray: Color(0xfff0f0f0),
-    text: Color(0xff222222),
-    grayText: Color(0xff82868a),
-    blueText: Color(0xff4092cd),
-    blueHeader: Color(0xff3a95d5),
-    divider: Color(0xffd9d9d9),
-    unread: Color(0xff4ecc5e),
-    unreadMuted: Color(0xffc6c9cc),
-    chatName: Color(0xff222222),
-    chatMessage: Color(0xff8b8d8f),
-    chatNameMessage: Color(0xff3c7eb0),
-    chatDate: Color(0xff95999c),
-    sentCheck: Color(0xff46aa36),
-    pinnedIcon: Color(0xffa8a8a8),
-    fab: Color(0xff65a9e0),
-    menuBg: Color(0xffffffff),
-    menuText: Color(0xff444444),
-    menuIcon: Color(0xff889198),
-    menuTop: Color(0xff598fba),
-    inBubble: Color(0xffffffff),
-    outBubble: Color(0xffefffde),
-    textIn: Color(0xff000000),
-    textOut: Color(0xff000000),
-    inTime: Color(0xffa1aab3),
-    outTime: Color(0xff70b15c),
-    outCheck: Color(0xff5db050),
-    inReplyLine: Color(0xff599fd8),
-    outReplyLine: Color(0xff6eb969),
-    inReplyName: Color(0xff3a8ccf),
-    outReplyName: Color(0xff55ab4f),
-    inForwardName: Color(0xff3886c7),
-    outForwardName: Color(0xff55ab4f),
-    panelBg: Color(0xffffffff),
-    panelHint: Color(0xffa4acb3),
-    panelIcons: Color(0xff8e959b),
-    panelSend: Color(0xff62b0eb),
-    // Стандартные обои Telegram (градиент из четырёх цветов).
-    wallpaper: [Color(0xffdbddbb), Color(0xff6ba587), Color(0xffd5d88d), Color(0xff88b884)],
-    serviceBg: Color(0x66456a4e),
-    switchOn: Color(0xff52ade9),
-    online: Color(0xff4bcb1c),
+  static const night = AyuColors(
+    dark: true,
+    windowBg: Color(0xff17212b),
+    windowBgOver: Color(0xff232e3c),
+    windowBgRipple: Color(0xff24303d),
+    windowFg: Color(0xfff5f5f5),
+    windowBoldFg: Color(0xffe9e8e8),
+    windowSubTextFg: Color(0xff708499),
+    windowActiveTextFg: Color(0xff6ab3f3),
+    activeLineFg: Color(0xff6396cb),
+    activeButtonBg: Color(0xff2f6ea5),
+    lightButtonFg: Color(0xff6ab2f2),
+    menuIconFg: Color(0xff6c7883),
+    attentionFg: Color(0xffec3942),
+    dividerBg: Color(0xff232e3c),
+    inputBorderFg: Color(0xff313c49),
+    filterInputBg: Color(0xff242f3d),
+    placeholderFg: Color(0xff6d7883),
+    dialogsTextFg: Color(0xff7f91a4),
+    dialogsTextFgService: Color(0xff73b9f5),
+    dialogsDateFg: Color(0xff8696a8),
+    dialogsUnreadBg: Color(0xff4082bc),
+    dialogsUnreadBgMuted: Color(0xff3e546a),
+    dialogsSentIconFg: Color(0xff72bcfd),
+    dialogsDraftFg: Color(0xffff525d),
+    dialogsBgActive: Color(0xff2b5278),
+    historyBg: Color(0xff0e1621),
+    msgInBg: Color(0xff182533),
+    msgOutBg: Color(0xff2b5278),
+    historyTextInFg: Color(0xfff5f5f5),
+    historyTextOutFg: Color(0xffe4ecf2),
+    historyLinkInFg: Color(0xff70baf5),
+    historyLinkOutFg: Color(0xff83caff),
+    msgInDateFg: Color(0xff6d7f8f),
+    msgOutDateFg: Color(0xff7da8d3),
+    historyOutIconFg: Color(0xff6bbfff),
+    msgInReplyBarColor: Color(0xff429bdb),
+    msgOutReplyBarColor: Color(0xff65b9f4),
+    msgInServiceFg: Color(0xff71bafa),
+    msgOutServiceFg: Color(0xff90caff),
+    msgServiceBg: Color(0xd5213040),
+    msgFileInBg: Color(0xff3f96d0),
+    msgFileOutBg: Color(0xff4c9ce2),
+    historyComposeAreaBg: Color(0xff17212b),
+    historyComposeIconFg: Color(0xff6c7883),
+    historySendIconFg: Color(0xff5288c1),
+    historyToDownBg: Color(0xff1d2b3a),
+    peerNames: [
+      Color(0xfffb6169), Color(0xff85de85), Color(0xfff3bc5c), Color(0xff65bdf3),
+      Color(0xffb48bf2), Color(0xffff5694), Color(0xff62d4e3), Color(0xfffaa357),
+    ],
+    online: Color(0xff4dc920),
   );
 
-  static const dark = AyuColors(
-    actionBar: Color(0xff232326),
-    actionBarTitle: Color(0xffffffff),
-    actionBarSubtitle: Color(0x73f2f2f2),
-    windowBg: Color(0xff181819),
-    windowGray: Color(0xff000000),
-    text: Color(0xffffffff),
-    grayText: Color(0x9efdfdff),
-    blueText: Color(0xff64b5ef),
-    blueHeader: Color(0xff6cb6f8),
-    divider: Color(0xff000000),
-    unread: Color(0xff399ef3),
-    unreadMuted: Color(0xff454545),
-    chatName: Color(0xfff1f1f1),
-    chatMessage: Color(0xff828282),
-    chatNameMessage: Color(0xffebebeb),
-    chatDate: Color(0xff787878),
-    sentCheck: Color(0xff46adf3),
-    pinnedIcon: Color(0xff646464),
-    fab: Color(0xff5ea0db),
-    menuBg: Color(0xff242426),
-    menuText: Color(0xf4ffffff),
-    menuIcon: Color(0xff828282),
-    menuTop: Color(0xff1b1b1b),
-    inBubble: Color(0xff1f2123),
-    outBubble: Color(0xff366caf),
-    textIn: Color(0xfffafafa),
-    textOut: Color(0xfffafafa),
-    inTime: Color(0xff7d7f81),
-    outTime: Color(0xff94d3f6),
-    outCheck: Color(0xe1c9f0ff),
-    inReplyLine: Color(0xff79c4fc),
-    outReplyLine: Color(0xff7eceff),
-    inReplyName: Color(0xff79c4fc),
-    outReplyName: Color(0xff9fd9ff),
-    inForwardName: Color(0xff77bcfc),
-    outForwardName: Color(0xffacddff),
-    panelBg: Color(0xff1e1e1f),
-    panelHint: Color(0x64ffffff),
-    panelIcons: Color(0x64ffffff),
-    panelSend: Color(0xff4ca9f4),
-    wallpaper: [Color(0xff0f0f10), Color(0xff0f0f10), Color(0xff0f0f10), Color(0xff0f0f10)],
-    serviceBg: Color(0x96373737),
-    switchOn: Color(0xff459ce3),
-    online: Color(0xff4bcb1c),
+  static const day = AyuColors(
+    dark: false,
+    windowBg: Color(0xffffffff),
+    windowBgOver: Color(0xfff1f1f1),
+    windowBgRipple: Color(0xffe5e5e5),
+    windowFg: Color(0xff000000),
+    windowBoldFg: Color(0xff222222),
+    windowSubTextFg: Color(0xff999999),
+    windowActiveTextFg: Color(0xff168acd),
+    activeLineFg: Color(0xff37a1de),
+    activeButtonBg: Color(0xff40a7e3),
+    lightButtonFg: Color(0xff168acd),
+    menuIconFg: Color(0xff999999),
+    attentionFg: Color(0xffd14e4e),
+    dividerBg: Color(0xfff1f1f1),
+    inputBorderFg: Color(0xffe0e0e0),
+    filterInputBg: Color(0xfff1f1f1),
+    placeholderFg: Color(0xff999999),
+    dialogsTextFg: Color(0xff999999),
+    dialogsTextFgService: Color(0xff168acd),
+    dialogsDateFg: Color(0xff999999),
+    dialogsUnreadBg: Color(0xff40a7e3),
+    dialogsUnreadBgMuted: Color(0xffbbbbbb),
+    dialogsSentIconFg: Color(0xff5dc452),
+    dialogsDraftFg: Color(0xffdd4b39),
+    dialogsBgActive: Color(0xff419fd9),
+    historyBg: Color(0xffdfe7ea),
+    msgInBg: Color(0xffffffff),
+    msgOutBg: Color(0xffeffdde),
+    historyTextInFg: Color(0xff000000),
+    historyTextOutFg: Color(0xff000000),
+    historyLinkInFg: Color(0xff168acd),
+    historyLinkOutFg: Color(0xff168acd),
+    msgInDateFg: Color(0xffa0acb6),
+    msgOutDateFg: Color(0xff6db566),
+    historyOutIconFg: Color(0xff57b84c),
+    msgInReplyBarColor: Color(0xff37a1de),
+    msgOutReplyBarColor: Color(0xff5eb854),
+    msgInServiceFg: Color(0xff168acd),
+    msgOutServiceFg: Color(0xff45a32d),
+    msgServiceBg: Color(0x7f517c41),
+    msgFileInBg: Color(0xff40a7e3),
+    msgFileOutBg: Color(0xff5fbe67),
+    historyComposeAreaBg: Color(0xffffffff),
+    historyComposeIconFg: Color(0xff999999),
+    historySendIconFg: Color(0xff40a7e3),
+    historyToDownBg: Color(0xffffffff),
+    peerNames: [
+      Color(0xffc03d33), Color(0xff4fad2d), Color(0xffd09306), Color(0xff168acd),
+      Color(0xff8544d6), Color(0xffcd4073), Color(0xff2996ad), Color(0xffce671b),
+    ],
+    online: Color(0xff4dc920),
   );
 
   @override
@@ -164,76 +184,86 @@ class AyuColors extends ThemeExtension<AyuColors> {
 }
 
 extension AyuColorsX on BuildContext {
-  AyuColors get ayu => Theme.of(this).extension<AyuColors>() ?? AyuColors.light;
+  AyuColors get ayu => Theme.of(this).extension<AyuColors>() ?? AyuColors.night;
 }
 
-ThemeData buildAyuTheme(Brightness b) {
-  final c = b == Brightness.dark ? AyuColors.dark : AyuColors.light;
+const ayuFont = 'OpenSans';
+
+ThemeData buildAyuTheme(bool night) {
+  final c = night ? AyuColors.night : AyuColors.day;
+  final b = night ? Brightness.dark : Brightness.light;
   final base = ThemeData(
     brightness: b,
     useMaterial3: false,
-    fontFamily: 'Roboto',
-    colorScheme: ColorScheme.fromSeed(seedColor: c.blueText, brightness: b).copyWith(
-      primary: c.blueText,
+    fontFamily: ayuFont,
+    colorScheme: ColorScheme.fromSeed(seedColor: c.activeButtonBg, brightness: b).copyWith(
+      primary: c.windowActiveTextFg,
+      secondary: c.windowActiveTextFg,
       surface: c.windowBg,
+      onSurface: c.windowFg,
     ),
     scaffoldBackgroundColor: c.windowBg,
-    dividerColor: c.divider,
+    canvasColor: c.windowBg,
+    dividerColor: c.inputBorderFg,
+    splashColor: c.windowBgRipple,
+    highlightColor: c.windowBgOver,
     extensions: [c],
   );
   return base.copyWith(
     appBarTheme: AppBarTheme(
-      backgroundColor: c.actionBar,
-      foregroundColor: c.actionBarTitle,
-      elevation: 1.5,
-      titleTextStyle: TextStyle(fontFamily: 'Roboto', color: c.actionBarTitle, fontSize: 20, fontWeight: FontWeight.w600),
-      iconTheme: IconThemeData(color: c.actionBarTitle),
+      backgroundColor: c.windowBg,
+      foregroundColor: c.windowBoldFg,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      shape: Border(bottom: BorderSide(color: c.dark ? const Color(0xff0e1621) : c.inputBorderFg, width: 1)),
+      titleTextStyle: TextStyle(fontFamily: ayuFont, color: c.windowBoldFg, fontSize: 16, fontWeight: FontWeight.w600),
+      iconTheme: IconThemeData(color: c.menuIconFg),
+      actionsIconTheme: IconThemeData(color: c.menuIconFg),
     ),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Colors.white : null),
-      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.switchOn : null),
+      thumbColor: WidgetStateProperty.all(c.windowBg),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.activeLineFg : c.inputBorderFg),
+      trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
     ),
-    textTheme: base.textTheme.apply(bodyColor: c.text, displayColor: c.text),
-    listTileTheme: ListTileThemeData(textColor: c.text, iconColor: c.menuIcon),
-    bottomSheetTheme: BottomSheetThemeData(backgroundColor: c.windowBg),
-    popupMenuTheme: PopupMenuThemeData(color: c.windowBg),
-    dialogTheme: DialogThemeData(backgroundColor: c.windowBg),
-    textSelectionTheme: TextSelectionThemeData(cursorColor: c.blueText),
+    textTheme: base.textTheme.apply(bodyColor: c.windowFg, displayColor: c.windowFg, fontFamily: ayuFont),
+    iconTheme: IconThemeData(color: c.menuIconFg),
+    listTileTheme: ListTileThemeData(textColor: c.windowFg, iconColor: c.menuIconFg),
+    bottomSheetTheme: BottomSheetThemeData(backgroundColor: c.windowBg, modalBackgroundColor: c.windowBg),
+    popupMenuTheme: PopupMenuThemeData(
+      color: c.windowBg,
+      textStyle: TextStyle(fontFamily: ayuFont, color: c.windowFg, fontSize: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: c.windowBg,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      titleTextStyle: TextStyle(fontFamily: ayuFont, color: c.windowBoldFg, fontSize: 17, fontWeight: FontWeight.w600),
+      contentTextStyle: TextStyle(fontFamily: ayuFont, color: c.windowFg, fontSize: 14),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: c.lightButtonFg,
+        textStyle: const TextStyle(fontFamily: ayuFont, fontWeight: FontWeight.w600, fontSize: 14),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: c.dark ? const Color(0xff242f3d) : const Color(0xdd000000),
+      contentTextStyle: const TextStyle(fontFamily: ayuFont, color: Colors.white, fontSize: 14),
+      behavior: SnackBarBehavior.floating,
+    ),
+    textSelectionTheme: TextSelectionThemeData(cursorColor: c.activeLineFg, selectionHandleColor: c.activeLineFg),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: c.windowActiveTextFg),
+    checkboxTheme: CheckboxThemeData(
+      fillColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? c.activeButtonBg : null),
+    ),
   );
 }
 
-/// Обои чата: четырёхточечный градиент Telegram, нарисованный радиальными пятнами.
+/// Фон истории сообщений.
 class AyuWallpaper extends StatelessWidget {
   const AyuWallpaper({super.key, required this.child});
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(painter: _WallpaperPainter(context.ayu.wallpaper), child: child);
-}
-
-class _WallpaperPainter extends CustomPainter {
-  _WallpaperPainter(this.colors);
-  final List<Color> colors;
-
-  // Позиции цветов как в GradientRenderer Telegram.
-  static const _points = [Offset(0.80, 0.10), Offset(0.35, 0.25), Offset(0.20, 0.90), Offset(0.65, 0.75)];
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    canvas.drawRect(rect, Paint()..color = colors[0]);
-    final r = size.longestSide * 0.75;
-    for (var i = 0; i < 4; i++) {
-      final center = Offset(_points[i].dx * size.width, _points[i].dy * size.height);
-      canvas.drawRect(
-        rect,
-        Paint()
-          ..shader = RadialGradient(colors: [colors[i], colors[i].withValues(alpha: 0)])
-              .createShader(Rect.fromCircle(center: center, radius: r)),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_WallpaperPainter old) => old.colors != colors;
+  Widget build(BuildContext context) => ColoredBox(color: context.ayu.historyBg, child: child);
 }

@@ -1,9 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../ayu/ayu_settings.dart';
 import '../td/td_client.dart';
 import '../td/td_service.dart';
 import 'ayu_theme.dart';
+import 'widgets.dart';
 
 /// Экран, если api_id/api_hash не были вшиты при сборке (--dart-define).
 class ApiKeysScreen extends StatefulWidget {
@@ -59,144 +63,560 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
+/// Вход в стиле Intro::Widget из AyuGram Desktop.
 class _AuthScreenState extends State<AuthScreen> {
-  final _input = TextEditingController();
+  final _phone = TextEditingController();
+  final _code = TextEditingController();
+  final _password = TextEditingController();
   final _first = TextEditingController();
   final _last = TextEditingController();
+  final _email = TextEditingController();
   bool _busy = false;
   String? _error;
+  bool _editPhone = false;
+
+  List<TdObject> _countries = [];
+  TdObject? _country;
+  late final _codeField = TextEditingController(text: '+380');
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCountries();
+  }
+
+  Future<void> _loadCountries() async {
+    try {
+      final res = await TdService.instance.td.send({'@type': 'getCountries'});
+      final list = (res['countries'] as List).cast<TdObject>().where((c) => c['is_hidden'] != true).toList()
+        ..sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+      final locale = Platform.localeName.split(RegExp('[_-]'));
+      final cc = locale.length > 1 ? locale[1].toUpperCase() : 'UA';
+      if (!mounted) return;
+      setState(() {
+        _countries = list;
+        _country = list.firstWhere((c) => c['country_code'] == cc,
+            orElse: () => list.firstWhere((c) => c['country_code'] == 'UA', orElse: () => list.first));
+        _codeField.text = '+${(_country!['calling_codes'] as List).first}';
+      });
+    } catch (_) {}
+  }
 
   @override
   void didUpdateWidget(AuthScreen old) {
     super.didUpdateWidget(old);
     if (old.state['@type'] != widget.state['@type']) {
-      _input.clear();
       _error = null;
+      _editPhone = false;
+      _code.clear();
+      _password.clear();
     }
   }
 
-  Future<void> _submit() async {
-    final value = _input.text.trim();
-    final td = TdService.instance.td;
+  String get _type => _editPhone ? 'authorizationStateWaitPhoneNumber' : widget.state['@type'] as String;
+
+  Future<void> _run(TdObject request) async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      switch (widget.state['@type']) {
-        case 'authorizationStateWaitPhoneNumber':
-          await td.send({'@type': 'setAuthenticationPhoneNumber', 'phone_number': value});
-        case 'authorizationStateWaitCode':
-          await td.send({'@type': 'checkAuthenticationCode', 'code': value});
-        case 'authorizationStateWaitPassword':
-          await td.send({'@type': 'checkAuthenticationPassword', 'password': value});
-        case 'authorizationStateWaitEmailAddress':
-          await td.send({'@type': 'setAuthenticationEmailAddress', 'email_address': value});
-        case 'authorizationStateWaitEmailCode':
-          await td.send({
-            '@type': 'checkAuthenticationEmailCode',
-            'code': {'@type': 'emailAddressAuthenticationCode', 'code': value},
-          });
-        case 'authorizationStateWaitRegistration':
-          await td.send({'@type': 'registerUser', 'first_name': _first.text.trim(), 'last_name': _last.text.trim()});
-      }
+      await TdService.instance.td.send(request);
+      if (mounted) setState(() => _editPhone = false);
     } on TdError catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = _humanError(e.message));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  String _humanError(String m) => switch (m) {
+        'PHONE_NUMBER_INVALID' => 'Неверный номер телефона.',
+        'PHONE_CODE_INVALID' => 'Неверный код. Попробуйте ещё раз.',
+        'PASSWORD_HASH_INVALID' => 'Неверный пароль.',
+        'PHONE_CODE_EXPIRED' => 'Код устарел. Запросите новый.',
+        _ when m.startsWith('FLOOD_WAIT') => 'Слишком много попыток. Попробуйте позже.',
+        _ => m,
+      };
+
+  void _submit() {
+    switch (_type) {
+      case 'authorizationStateWaitPhoneNumber':
+        final digits = (_codeField.text + _phone.text).replaceAll(RegExp(r'[^0-9]'), '');
+        _run({'@type': 'setAuthenticationPhoneNumber', 'phone_number': digits});
+      case 'authorizationStateWaitCode':
+        _run({'@type': 'checkAuthenticationCode', 'code': _code.text.trim()});
+      case 'authorizationStateWaitPassword':
+        _run({'@type': 'checkAuthenticationPassword', 'password': _password.text});
+      case 'authorizationStateWaitEmailAddress':
+        _run({'@type': 'setAuthenticationEmailAddress', 'email_address': _email.text.trim()});
+      case 'authorizationStateWaitEmailCode':
+        _run({
+          '@type': 'checkAuthenticationEmailCode',
+          'code': {'@type': 'emailAddressAuthenticationCode', 'code': _code.text.trim()},
+        });
+      case 'authorizationStateWaitRegistration':
+        _run({'@type': 'registerUser', 'first_name': _first.text.trim(), 'last_name': _last.text.trim()});
+    }
+  }
+
+  Future<void> _pickCountry() async {
+    final picked = await showDialog<TdObject>(context: context, builder: (_) => _CountryDialog(countries: _countries));
+    if (picked == null) return;
+    setState(() {
+      _country = picked;
+      _codeField.text = '+${(picked['calling_codes'] as List).first}';
+    });
+  }
+
+  void _onCodeChanged(String v) {
+    final digits = v.replaceAll(RegExp(r'[^0-9]'), '');
+    final match = _countries.where((c) => (c['calling_codes'] as List).contains(digits)).toList();
+    if (match.isNotEmpty) setState(() => _country = match.first);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.ayu;
-    final type = widget.state['@type'] as String;
-    final (title, hint, label, keyboard, obscure) = switch (type) {
-      'authorizationStateWaitPhoneNumber' => ('Ваш телефон', 'Проверьте код страны и введите свой номер телефона.', '+7 900 000 00 00', TextInputType.phone, false),
-      'authorizationStateWaitCode' => ('Введите код', _codeHint(), 'Код', TextInputType.number, false),
-      'authorizationStateWaitPassword' => ('Облачный пароль', _passwordHint(), 'Пароль', TextInputType.text, true),
-      'authorizationStateWaitEmailAddress' => ('Почта', 'Telegram просит привязать e-mail.', 'E-mail', TextInputType.emailAddress, false),
-      'authorizationStateWaitEmailCode' => ('Проверьте почту', 'Мы отправили код на вашу почту.', 'Код', TextInputType.number, false),
-      'authorizationStateWaitRegistration' => ('Ваше имя', 'Укажите имя и (по желанию) фамилию.', '', TextInputType.name, false),
-      _ => ('AyuGram', 'Подключение…', '', TextInputType.text, false),
-    };
+    final type = _type;
     final waiting = !type.startsWith('authorizationStateWait') || type == 'authorizationStateWaitTdlibParameters';
-
-    InputDecoration deco(String l) => InputDecoration(
-          hintText: l,
-          hintStyle: TextStyle(color: c.panelHint),
-          enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.divider)),
-          focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.blueText, width: 2)),
-        );
+    final canGoBack = !waiting && type != 'authorizationStateWaitPhoneNumber';
 
     return Scaffold(
       backgroundColor: c.windowBg,
-      floatingActionButton: waiting
-          ? null
-          : FloatingActionButton(
-              backgroundColor: c.fab,
-              foregroundColor: Colors.white,
-              onPressed: _busy ? null : _submit,
-              child: _busy
-                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
-                  : const Icon(Icons.arrow_forward),
-            ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-          children: [
-            Center(child: Image.asset('assets/logo.png', width: 110, height: 110)),
-            const SizedBox(height: 24),
-            Text(title,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: c.text)),
-            const SizedBox(height: 10),
-            Text(hint, textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: c.grayText, height: 1.35)),
-            const SizedBox(height: 28),
-            if (waiting)
-              Center(child: CircularProgressIndicator(color: c.blueText))
-            else if (type == 'authorizationStateWaitRegistration') ...[
-              TextField(controller: _first, decoration: deco('Имя')),
-              TextField(controller: _last, decoration: deco('Фамилия (необязательно)')),
-            ] else
-              TextField(
-                // Новый ключ на каждом шаге: иначе iOS не меняет тип уже открытой клавиатуры.
-                key: ValueKey(type),
-                controller: _input,
-                autofocus: true,
-                keyboardType: keyboard,
-                obscureText: obscure,
-                autocorrect: false,
-                enableSuggestions: !obscure,
-                textAlign: obscure ? TextAlign.start : TextAlign.center,
-                style: TextStyle(fontSize: 20, color: c.text, letterSpacing: keyboard == TextInputType.number ? 6 : 0.5),
-                decoration: deco(label),
-                onSubmitted: (_) => _submit(),
+        child: Column(children: [
+          SizedBox(
+            height: 48,
+            child: Row(children: [
+              if (canGoBack)
+                IconButton(
+                  icon: Icon(Icons.arrow_back, color: c.menuIconFg),
+                  onPressed: () => setState(() {
+                    _editPhone = true;
+                    _error = null;
+                  }),
+                ),
+              const Spacer(),
+            ]),
+          ),
+          Expanded(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 36),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: waiting ? const CircularProgressIndicator(strokeWidth: 2) : _step(context, type),
+                ),
               ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 14),
-                child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xffe56555))),
-              ),
-          ],
-        ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text('AyuGram iOS v1.0', style: TextStyle(fontSize: 11.5, color: c.windowSubTextFg)),
+          ),
+        ]),
       ),
     );
   }
 
-  String _codeHint() {
-    final info = widget.state['code_info'] as TdObject?;
-    final t = (info?['type'] as TdObject?)?['@type'];
-    return switch (t) {
-      'authenticationCodeTypeTelegramMessage' => 'Код отправлен в Telegram на другом устройстве',
-      'authenticationCodeTypeSms' => 'Код отправлен по SMS',
-      'authenticationCodeTypeCall' => 'Вам позвонят и продиктуют код',
-      _ => 'Введите код подтверждения',
-    };
+  Widget _title(BuildContext context, String title, Widget description) {
+    final c = context.ayu;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: c.windowBoldFg)),
+      const SizedBox(height: 8),
+      DefaultTextStyle.merge(style: TextStyle(fontSize: 13.5, color: c.windowSubTextFg, height: 1.45), child: description),
+      const SizedBox(height: 26),
+    ]);
   }
 
-  String _passwordHint() {
-    final h = widget.state['password_hint'] as String? ?? '';
-    return h.isEmpty ? 'Включена двухэтапная проверка' : 'Подсказка: $h';
+  InputDecoration _underline(BuildContext context, {String? hint, String? label}) {
+    final c = context.ayu;
+    return InputDecoration(
+      isDense: true,
+      hintText: hint,
+      labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+      labelStyle: TextStyle(color: c.windowActiveTextFg, fontSize: 15),
+      hintStyle: TextStyle(color: c.placeholderFg, letterSpacing: 1.5),
+      contentPadding: const EdgeInsets.symmetric(vertical: 10),
+      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.inputBorderFg)),
+      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: c.activeLineFg, width: 2)),
+    );
+  }
+
+  Widget _errorText(BuildContext context) => _error == null
+      ? const SizedBox(height: 16)
+      : Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text(_error!, style: TextStyle(color: context.ayu.attentionFg, fontSize: 13.5)),
+        );
+
+  Widget _step(BuildContext context, String type) {
+    final c = context.ayu;
+    final field = TextStyle(fontSize: 16, color: c.windowFg);
+    switch (type) {
+      case 'authorizationStateWaitPhoneNumber':
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _title(context, 'Ваш номер телефона', const Text('Проверьте код страны и введите\nсвой номер телефона.')),
+          InkWell(
+            onTap: _countries.isEmpty ? null : _pickCountry,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.inputBorderFg))),
+              child: Row(children: [
+                Expanded(child: Text(_country?['name'] as String? ?? 'Страна', style: field)),
+                Icon(Icons.keyboard_arrow_down, color: c.menuIconFg),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            SizedBox(
+              width: 64,
+              child: TextField(
+                controller: _codeField,
+                keyboardType: TextInputType.phone,
+                style: field,
+                onChanged: _onCodeChanged,
+                decoration: _underline(context),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                key: const ValueKey('phone'),
+                controller: _phone,
+                autofocus: true,
+                keyboardType: TextInputType.phone,
+                style: field.copyWith(letterSpacing: 1),
+                decoration: _underline(context, hint: '-- --- -- --'),
+                onSubmitted: (_) => _submit(),
+              ),
+            ),
+          ]),
+          _errorText(context),
+          const SizedBox(height: 24),
+          AyuButton(text: 'Далее', busy: _busy, onPressed: _submit),
+          const SizedBox(height: 26),
+          Center(
+            child: GestureDetector(
+              onTap: () => _run({'@type': 'requestQrCodeAuthentication', 'other_user_ids': []}),
+              child: Text('Быстрый вход по QR-коду', style: TextStyle(color: c.lightButtonFg, fontSize: 13.5)),
+            ),
+          ),
+        ]);
+
+      case 'authorizationStateWaitOtherDeviceConfirmation':
+        final link = widget.state['link'] as String? ?? '';
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: QrImageView(data: link, size: 200, backgroundColor: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text('Вход по QR-коду',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: c.windowBoldFg)),
+          const SizedBox(height: 12),
+          Text(
+            '1. Откройте Telegram на телефоне\n'
+            '2. Настройки → Устройства → Подключить устройство\n'
+            '3. Наведите камеру на этот код',
+            style: TextStyle(fontSize: 13.5, color: c.windowSubTextFg, height: 1.6),
+          ),
+          const SizedBox(height: 22),
+          Center(
+            child: GestureDetector(
+              onTap: () => setState(() => _editPhone = true),
+              child: Text('Войти по номеру телефона', style: TextStyle(color: c.lightButtonFg, fontSize: 13.5)),
+            ),
+          ),
+        ]);
+
+      case 'authorizationStateWaitCode':
+        final info = widget.state['code_info'] as TdObject?;
+        final codeType = info?['type'] as TdObject?;
+        final length = codeType?['length'] as int? ?? 5;
+        final phone = info?['phone_number'] as String? ?? '';
+        final viaTelegram = codeType?['@type'] == 'authenticationCodeTypeTelegramMessage';
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _title(
+            context,
+            phone.isEmpty ? 'Код' : _formatPhone(phone),
+            viaTelegram
+                ? Text.rich(TextSpan(children: [
+                    const TextSpan(text: 'Код отправлен '),
+                    TextSpan(text: 'через Telegram', style: TextStyle(fontWeight: FontWeight.w600, color: c.windowFg)),
+                    const TextSpan(text: ' на другие ваши устройства, если они подключены.'),
+                  ]))
+                : Text(_codeHint(codeType)),
+          ),
+          _CodeBoxes(controller: _code, length: length, onCompleted: _submit),
+          if (info?['next_type'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: GestureDetector(
+                onTap: () => _run({'@type': 'resendAuthenticationCode', 'reason': null}),
+                child: Text(_resendLabel(info!['next_type'] as TdObject), style: TextStyle(color: c.lightButtonFg, fontSize: 13.5)),
+              ),
+            ),
+          _errorText(context),
+          const SizedBox(height: 24),
+          AyuButton(text: 'Далее', busy: _busy, onPressed: _submit),
+        ]);
+
+      case 'authorizationStateWaitPassword':
+        final hint = widget.state['password_hint'] as String? ?? '';
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _title(context, 'Проверка облачного пароля', const Text('Введите ваш облачный пароль.')),
+          TextField(
+            // Новый ключ на каждом шаге: iOS не меняет тип уже открытой клавиатуры.
+            key: const ValueKey('password'),
+            controller: _password,
+            autofocus: true,
+            obscureText: true,
+            keyboardType: TextInputType.text,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: field,
+            decoration: _underline(context, label: 'Ваш облачный пароль'),
+            onSubmitted: (_) => _submit(),
+          ),
+          if (hint.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Text('Подсказка: $hint', style: TextStyle(fontSize: 13.5, color: c.windowFg)),
+            ),
+          _errorText(context),
+          const SizedBox(height: 24),
+          AyuButton(text: 'Отправить', busy: _busy, onPressed: _submit),
+        ]);
+
+      case 'authorizationStateWaitEmailAddress':
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _title(context, 'Почта', const Text('Telegram просит привязать e-mail для входа.')),
+          TextField(
+            key: const ValueKey('email'),
+            controller: _email,
+            autofocus: true,
+            keyboardType: TextInputType.emailAddress,
+            style: field,
+            decoration: _underline(context, label: 'E-mail'),
+          ),
+          _errorText(context),
+          const SizedBox(height: 24),
+          AyuButton(text: 'Далее', busy: _busy, onPressed: _submit),
+        ]);
+
+      case 'authorizationStateWaitEmailCode':
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _title(context, 'Проверьте почту', const Text('Мы отправили код на вашу почту.')),
+          _CodeBoxes(controller: _code, length: 6, onCompleted: _submit),
+          _errorText(context),
+          const SizedBox(height: 24),
+          AyuButton(text: 'Далее', busy: _busy, onPressed: _submit),
+        ]);
+
+      case 'authorizationStateWaitRegistration':
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _title(context, 'Ваше имя', const Text('Укажите имя и (по желанию) фамилию.')),
+          TextField(key: const ValueKey('first'), controller: _first, style: field, decoration: _underline(context, label: 'Имя')),
+          const SizedBox(height: 14),
+          TextField(controller: _last, style: field, decoration: _underline(context, label: 'Фамилия')),
+          _errorText(context),
+          const SizedBox(height: 24),
+          AyuButton(text: 'Зарегистрироваться', busy: _busy, onPressed: _submit),
+        ]);
+    }
+    return Text(type, style: TextStyle(color: c.windowSubTextFg));
+  }
+
+  /// +380501234567 → +380 50 123 45 67 (по коду страны из getCountries).
+  String _formatPhone(String digits) {
+    String? code;
+    for (final c in _countries) {
+      for (final cc in (c['calling_codes'] as List).cast<String>()) {
+        if (digits.startsWith(cc) && (code == null || cc.length > code.length)) code = cc;
+      }
+    }
+    code ??= digits.length > 10 ? digits.substring(0, digits.length - 10) : '';
+    final rest = digits.substring(code.length);
+    final groups = <String>[];
+    var i = 0;
+    for (final n in rest.length == 9 ? [2, 3, 2, 2] : rest.length == 10 ? [3, 3, 2, 2] : [rest.length]) {
+      if (i >= rest.length) break;
+      groups.add(rest.substring(i, (i + n).clamp(0, rest.length)));
+      i += n;
+    }
+    if (i < rest.length) groups.add(rest.substring(i));
+    return '+$code ${groups.join(' ')}'.trim();
+  }
+
+  String _codeHint(TdObject? t) => switch (t?['@type']) {
+        'authenticationCodeTypeSms' => 'Мы отправили SMS с кодом.',
+        'authenticationCodeTypeCall' => 'Вам позвонят и продиктуют код.',
+        'authenticationCodeTypeFragment' => 'Код отправлен через Fragment.',
+        _ => 'Введите код подтверждения.',
+      };
+
+  String _resendLabel(TdObject next) => switch (next['@type']) {
+        'authenticationCodeTypeSms' => 'Отправить код по SMS',
+        'authenticationCodeTypeCall' => 'Позвонить мне',
+        _ => 'Отправить код ещё раз',
+      };
+}
+
+/// Ячейки для ввода кода, как в AyuGram Desktop.
+class _CodeBoxes extends StatefulWidget {
+  const _CodeBoxes({required this.controller, required this.length, required this.onCompleted});
+  final TextEditingController controller;
+  final int length;
+  final VoidCallback onCompleted;
+
+  @override
+  State<_CodeBoxes> createState() => _CodeBoxesState();
+}
+
+class _CodeBoxesState extends State<_CodeBoxes> {
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.ayu;
+    return GestureDetector(
+      onTap: () => _focus.requestFocus(),
+      child: Stack(children: [
+        // Невидимое поле принимает ввод (и автоподстановку кода из SMS).
+        Opacity(
+          opacity: 0,
+          child: TextField(
+            key: const ValueKey('code'),
+            controller: widget.controller,
+            focusNode: _focus,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            autofillHints: const [AutofillHints.oneTimeCode],
+            maxLength: widget.length,
+            onChanged: (v) {
+              setState(() {});
+              if (v.length == widget.length) widget.onCompleted();
+            },
+          ),
+        ),
+        ListenableBuilder(
+          listenable: Listenable.merge([widget.controller, _focus]),
+          builder: (context, _) {
+            final text = widget.controller.text;
+            return Row(children: [
+              for (var i = 0; i < widget.length; i++)
+                Container(
+                  width: 40,
+                  height: 50,
+                  margin: const EdgeInsets.only(right: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: c.windowBgOver,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: _focus.hasFocus && i == text.length.clamp(0, widget.length - 1)
+                          ? c.activeLineFg
+                          : Colors.transparent,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Text(i < text.length ? text[i] : '',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.windowFg)),
+                ),
+            ]);
+          },
+        ),
+      ]),
+    );
+  }
+}
+
+/// Диалог «Выберите страну».
+class _CountryDialog extends StatefulWidget {
+  const _CountryDialog({required this.countries});
+  final List<TdObject> countries;
+
+  @override
+  State<_CountryDialog> createState() => _CountryDialogState();
+}
+
+class _CountryDialogState extends State<_CountryDialog> {
+  String _q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.ayu;
+    final list = widget.countries.where((x) {
+      if (_q.isEmpty) return true;
+      final q = _q.toLowerCase();
+      return (x['name'] as String).toLowerCase().contains(q) ||
+          (x['english_name'] as String? ?? '').toLowerCase().contains(q) ||
+          (x['calling_codes'] as List).any((cc) => '+$cc'.contains(q));
+    }).toList();
+    return Dialog(
+      backgroundColor: c.windowBg,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
+          child: Text('Выберите страну', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.windowBoldFg)),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: TextField(
+            autofocus: true,
+            onChanged: (v) => setState(() => _q = v),
+            style: TextStyle(color: c.windowFg),
+            decoration: InputDecoration(
+              prefixIcon: Icon(Icons.search, color: c.menuIconFg, size: 20),
+              hintText: 'Поиск',
+              hintStyle: TextStyle(color: c.placeholderFg),
+              border: InputBorder.none,
+            ),
+          ),
+        ),
+        Divider(height: 1, color: c.inputBorderFg),
+        Expanded(
+          child: ListView.builder(
+            itemCount: list.length,
+            itemBuilder: (context, i) {
+              final x = list[i];
+              return InkWell(
+                onTap: () => Navigator.pop(context, x),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+                  child: Text.rich(TextSpan(children: [
+                    TextSpan(text: x['name'] as String, style: TextStyle(fontWeight: FontWeight.w600, color: c.windowFg)),
+                    TextSpan(text: '  +${(x['calling_codes'] as List).first}', style: TextStyle(color: c.windowSubTextFg)),
+                  ]), style: const TextStyle(fontSize: 14)),
+                ),
+              );
+            },
+          ),
+        ),
+        Divider(height: 1, color: c.inputBorderFg),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Закрыть')),
+          ),
+        ),
+      ]),
+    );
   }
 }

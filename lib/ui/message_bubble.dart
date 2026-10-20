@@ -7,7 +7,7 @@ import 'ayu_theme.dart';
 import 'format.dart';
 import 'widgets.dart';
 
-/// Плашка по центру чата (дата, служебное сообщение) — ChatActionCell.
+/// Плашка по центру истории (дата, служебное сообщение).
 class ServicePill extends StatelessWidget {
   const ServicePill(this.text, {super.key});
   final String text;
@@ -16,11 +16,11 @@ class ServicePill extends StatelessWidget {
   Widget build(BuildContext context) => Center(
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 40),
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-          decoration: BoxDecoration(color: context.ayu.serviceBg, borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          decoration: BoxDecoration(color: context.ayu.msgServiceBg, borderRadius: BorderRadius.circular(12)),
           child: Text(text,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w500)),
+              style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600)),
         ),
       );
 }
@@ -34,6 +34,7 @@ class MessageBubble extends StatelessWidget {
     required this.isEdited,
     required this.showSender,
     this.tail = true,
+    this.avatarSlot = false,
     this.replyTo,
     this.onLongPress,
   });
@@ -44,6 +45,9 @@ class MessageBubble extends StatelessWidget {
   final bool isEdited;
   final bool showSender;
   final bool tail;
+
+  /// В группах слева от входящих оставляем место под аватарку (сама аватарка — у последнего в серии).
+  final bool avatarSlot;
   final TdObject? replyTo;
   final VoidCallback? onLongPress;
 
@@ -52,8 +56,8 @@ class MessageBubble extends StatelessWidget {
     final c = context.ayu;
     final s = AyuSettings.instance;
     final svc = TdService.instance;
-    final out = message['is_outgoing'] == true &&
-        !((chat['type'] as TdObject?)?['@type'] == 'chatTypeSupergroup' && (chat['type'] as TdObject)['is_channel'] == true);
+    final channel = svc.isChannel(chat);
+    final out = message['is_outgoing'] == true && !channel;
     final content = message['content'] as TdObject?;
 
     if (isServiceMessage(content)) {
@@ -65,11 +69,12 @@ class MessageBubble extends StatelessWidget {
     final isSticker = type == 'messageSticker' || type == 'messageVideoNote';
     final isMedia = type == 'messagePhoto' || type == 'messageVideo' || type == 'messageAnimation';
     final hasText = contentText(content).isNotEmpty;
-    final timeColor = out ? c.outTime : c.inTime;
+    final timeColor = out ? c.msgOutDateFg : c.msgInDateFg;
     final senderId = message['sender_id'] as TdObject?;
     final senderKey = (senderId?['user_id'] ?? senderId?['chat_id'] ?? 0) as int;
+    final reactions = _reactions(message);
 
-    // --- время и галочки ---
+    // --- время, просмотры, галочки ---
     final sending = message['sending_state'] as TdObject?;
     final lastRead = chat['last_read_outbox_message_id'] as int? ?? 0;
     final views = (message['interaction_info'] as TdObject?)?['view_count'] as int?;
@@ -78,10 +83,10 @@ class MessageBubble extends StatelessWidget {
       if (isEdited || (message['edit_date'] as int? ?? 0) != 0) s.editedMark,
     ].join(' ');
     Widget timeRow(Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
-          if (views != null && !out) ...[
+          if (views != null && channel) ...[
             Icon(Icons.visibility_outlined, size: 13, color: color),
-            const SizedBox(width: 2),
-            Text(_compact(views), style: TextStyle(fontSize: 12, color: color)),
+            const SizedBox(width: 3),
+            Text(compactCount(views), style: TextStyle(fontSize: 12, color: color)),
             const SizedBox(width: 6),
           ],
           if (marks.isNotEmpty) Text('$marks ', style: TextStyle(fontSize: 12, color: color, fontStyle: FontStyle.italic)),
@@ -89,85 +94,111 @@ class MessageBubble extends StatelessWidget {
           if (out) ...[
             const SizedBox(width: 3),
             if (sending?['@type'] == 'messageSendingStatePending')
-              Icon(Icons.schedule, size: 14, color: color)
+              Icon(Icons.schedule, size: 13, color: color)
             else if (sending?['@type'] == 'messageSendingStateFailed')
-              const Icon(Icons.error, size: 14, color: Colors.redAccent)
+              Icon(Icons.error, size: 14, color: c.attentionFg)
             else
-              Icon((message['id'] as int) <= lastRead ? Icons.done_all : Icons.done,
-                  size: 16, color: out ? c.outCheck : color),
+              Icon((message['id'] as int) <= lastRead ? Icons.done_all : Icons.done, size: 15, color: c.historyOutIconFg),
           ],
         ]);
-    // Ширина места под время, чтобы текст обтекал его, как в Telegram.
-    final reserve = 48.0 + (out ? 20 : 0) + (marks.isEmpty ? 0 : 8.0 * marks.length) + (views != null && !out ? 50 : 0);
+    final reserve = 42.0 + (out ? 20 : 0) + (marks.isEmpty ? 0 : 9.0 * marks.length) + (views != null && channel ? 52 : 0);
 
     // --- содержимое ---
     final children = <Widget>[];
-    final pad = isMedia && !hasText ? EdgeInsets.zero : const EdgeInsets.fromLTRB(9, 6, 9, 0);
+    final inset = EdgeInsets.fromLTRB(isMedia ? 10 : 0, isMedia ? 7 : 0, isMedia ? 10 : 0, 0);
 
-    if (showSender && !out && !isSticker) {
+    if ((showSender || channel) && !out && !isSticker) {
+      final name = channel ? chat['title'] as String? ?? '' : svc.senderName(senderId);
       children.add(Padding(
-        padding: EdgeInsets.fromLTRB(isMedia ? 9 : 0, isMedia ? 6 : 0, 0, 2),
-        child: Text(svc.senderName(senderId),
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: peerColor(senderKey))),
+        padding: inset.copyWith(bottom: 2),
+        child: Text(name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: peerColor(context, channel ? chat['id'] as int : senderKey))),
       ));
     }
     final fwd = message['forward_info'] as TdObject?;
     if (fwd != null) {
       children.add(Padding(
-        padding: EdgeInsets.fromLTRB(isMedia ? 9 : 0, isMedia ? 6 : 0, 0, 3),
+        padding: inset.copyWith(bottom: 3),
         child: Text.rich(
           TextSpan(children: [
-            const TextSpan(text: 'Переслано от\n'),
+            const TextSpan(text: 'Переслано от '),
             TextSpan(text: _originName(fwd['origin'] as TdObject?), style: const TextStyle(fontWeight: FontWeight.w600)),
           ]),
-          style: TextStyle(fontSize: 14, color: out ? c.outForwardName : c.inForwardName),
+          style: TextStyle(fontSize: 13.5, color: out ? c.msgOutServiceFg : c.msgInServiceFg),
         ),
       ));
     }
-    if (replyTo != null || (message['reply_to'] as TdObject?)?['@type'] == 'messageReplyToMessage') {
+    if ((message['reply_to'] as TdObject?)?['@type'] == 'messageReplyToMessage') {
       final r = replyTo;
+      final rKey = r == null ? 0 : (((r['sender_id'] as TdObject?)?['user_id'] ?? (r['sender_id'] as TdObject?)?['chat_id'] ?? 0) as int);
+      final barColor = r == null || out ? (out ? c.msgOutReplyBarColor : c.msgInReplyBarColor) : peerColor(context, rKey);
       children.add(Container(
-        margin: EdgeInsets.fromLTRB(isMedia ? 9 : 0, isMedia ? 6 : 2, isMedia ? 9 : 0, 4),
-        padding: const EdgeInsets.fromLTRB(8, 2, 6, 2),
+        margin: inset.copyWith(bottom: 4, top: isMedia ? 7 : 2),
+        padding: const EdgeInsets.fromLTRB(8, 3, 8, 3),
         decoration: BoxDecoration(
-          color: (out ? c.outReplyLine : c.inReplyLine).withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(4),
-          border: Border(left: BorderSide(color: out ? c.outReplyLine : c.inReplyLine, width: 3)),
+          color: barColor.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(5),
+          border: Border(left: BorderSide(color: barColor, width: 3)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(r == null ? 'Сообщение' : svc.senderName(r['sender_id'] as TdObject?),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: out ? c.outReplyName : c.inReplyName)),
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: barColor)),
           Text(r == null ? '…' : contentPreview(r['content'] as TdObject?).replaceAll('\n', ' '),
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: out ? c.textOut : c.textIn)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13.5, color: out ? c.historyTextOutFg : c.historyTextInFg)),
         ]),
       ));
     }
 
-    final textColor = out ? c.textOut : c.textIn;
-    final textSpan = hasText
-        ? Text.rich(
-            TextSpan(children: [
-              TextSpan(text: contentText(content)),
-              WidgetSpan(child: SizedBox(width: reserve, height: 14)),
-            ]),
-            style: TextStyle(fontSize: 16, color: textColor, height: 1.25),
-          )
-        : null;
-
-    children.addAll(_media(context, content, textColor));
-    if (textSpan != null) {
-      children.add(Padding(padding: EdgeInsets.fromLTRB(isMedia ? 9 : 0, isMedia ? 6 : 0, isMedia ? 9 : 0, 0), child: textSpan));
-    } else if (!isMedia && !isSticker) {
-      children.add(SizedBox(width: reserve, height: 16));
+    final textColor = out ? c.historyTextOutFg : c.historyTextInFg;
+    children.addAll(_media(context, content, textColor, out));
+    if (hasText) {
+      children.add(Padding(
+        padding: inset,
+        child: Text.rich(
+          TextSpan(children: [
+            TextSpan(text: contentText(content)),
+            if (reactions.isEmpty) WidgetSpan(child: SizedBox(width: reserve, height: 12)),
+          ]),
+          style: TextStyle(fontSize: 15, color: textColor, height: 1.3),
+        ),
+      ));
+    } else if (!isMedia && !isSticker && reactions.isEmpty) {
+      children.add(SizedBox(width: reserve, height: 14));
+    }
+    if (reactions.isNotEmpty) {
+      children.add(Padding(
+        padding: EdgeInsets.fromLTRB(isMedia ? 10 : 0, 6, reserve, isMedia ? 8 : 0),
+        child: Wrap(spacing: 5, runSpacing: 5, children: [
+          for (final r in reactions)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: r.chosen
+                    ? (out ? c.historyOutIconFg : c.windowActiveTextFg)
+                    : (out ? c.msgOutReplyBarColor : c.msgInReplyBarColor).withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text('${r.emoji} ${compactCount(r.count)}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: r.chosen ? c.windowBg : (out ? c.msgOutServiceFg : c.msgInServiceFg),
+                  )),
+            ),
+        ]),
+      ));
     }
 
-    // Время: поверх медиа — в тёмной плашке, иначе в правом нижнем углу пузыря.
-    final onMedia = (isMedia && !hasText) || isSticker;
+    final onMedia = (isMedia && !hasText && reactions.isEmpty) || isSticker;
     final time = Positioned(
-      right: onMedia ? 6 : 8,
-      bottom: onMedia ? 6 : 4,
+      right: onMedia ? 6 : 9,
+      bottom: onMedia ? 6 : 5,
       child: onMedia
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -179,19 +210,24 @@ class MessageBubble extends StatelessWidget {
 
     final body = Stack(children: [
       Padding(
-        padding: onMedia ? EdgeInsets.zero : pad.copyWith(bottom: 6),
+        padding: onMedia
+            ? EdgeInsets.zero
+            : isMedia
+                ? const EdgeInsets.only(bottom: 22)
+                : const EdgeInsets.fromLTRB(11, 7, 11, 7),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: children),
       ),
       time,
     ]);
 
-    final maxW = MediaQuery.sizeOf(context).width * (isMedia ? 0.72 : 0.8);
+    final screen = MediaQuery.sizeOf(context).width;
+    final maxW = (screen - (avatarSlot ? 44 : 0)) * (isMedia ? 0.78 : 0.82);
     Widget bubble = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxW, minWidth: 60),
+      constraints: BoxConstraints(maxWidth: maxW, minWidth: 64),
       child: isSticker
           ? body
           : CustomPaint(
-              painter: _BubblePainter(color: out ? c.outBubble : c.inBubble, out: out, tail: tail),
+              painter: _BubblePainter(color: out ? c.msgOutBg : c.msgInBg, out: out, tail: tail),
               child: ClipRRect(borderRadius: BorderRadius.circular(_BubblePainter.radius), child: body),
             ),
     );
@@ -201,13 +237,11 @@ class MessageBubble extends StatelessWidget {
       onLongPress: onLongPress,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: EdgeInsets.fromLTRB(out ? 56 : 8, tail ? 2 : 1, out ? 8 : 56, tail ? 4 : 1),
+        padding: EdgeInsets.fromLTRB(out ? 50 : (avatarSlot ? 0 : 10), 1, out ? 10 : 40, tail ? 6 : 1),
         child: Align(alignment: out ? Alignment.centerRight : Alignment.centerLeft, child: bubble),
       ),
     );
   }
-
-  static String _compact(int n) => n < 1000 ? '$n' : n < 1000000 ? '${(n / 1000).toStringAsFixed(1)}K' : '${(n / 1e6).toStringAsFixed(1)}M';
 
   String _originName(TdObject? origin) {
     final svc = TdService.instance;
@@ -220,9 +254,24 @@ class MessageBubble extends StatelessWidget {
     };
   }
 
-  List<Widget> _media(BuildContext context, TdObject? content, Color textColor) {
+  static List<({String emoji, int count, bool chosen})> _reactions(TdObject m) {
+    final list = ((m['interaction_info'] as TdObject?)?['reactions'] as TdObject?)?['reactions'] as List?;
+    if (list == null) return const [];
+    return [
+      for (final r in list.cast<TdObject>())
+        (
+          emoji: ((r['type'] as TdObject?)?['emoji'] as String?) ??
+              ((r['type'] as TdObject?)?['@type'] == 'reactionTypePaid' ? '⭐' : '❤'),
+          count: r['total_count'] as int? ?? 0,
+          chosen: r['is_chosen'] == true,
+        ),
+    ];
+  }
+
+  List<Widget> _media(BuildContext context, TdObject? content, Color textColor, bool out) {
     final c = context.ayu;
-    final out = message['is_outgoing'] == true;
+    final accent = out ? c.msgFileOutBg : c.msgFileInBg;
+    final sub = out ? c.msgOutDateFg : c.msgInDateFg;
     switch (content?['@type']) {
       case 'messagePhoto':
         final sizes = ((content!['photo'] as TdObject)['sizes'] as List).cast<TdObject>();
@@ -230,9 +279,7 @@ class MessageBubble extends StatelessWidget {
         final best = sizes.lastWhere((s) => (s['width'] as int) <= 1280, orElse: () => sizes.last);
         final w = (best['width'] as int).toDouble();
         final h = (best['height'] as int).toDouble();
-        return [
-          AspectRatio(aspectRatio: h == 0 ? 1 : (w / h).clamp(0.6, 1.8), child: TdImage(best['photo'] as TdObject)),
-        ];
+        return [AspectRatio(aspectRatio: h == 0 ? 1 : (w / h).clamp(0.6, 1.8), child: TdImage(best['photo'] as TdObject))];
       case 'messageSticker':
         final sticker = content!['sticker'] as TdObject;
         final format = (sticker['format'] as TdObject?)?['@type'];
@@ -259,17 +306,17 @@ class MessageBubble extends StatelessWidget {
           if (thumb != null) TdImage(thumb) else const ColoredBox(color: Colors.black26),
           Center(
             child: Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(color: Colors.black38, shape: BoxShape.circle),
+              width: 46,
+              height: 46,
+              decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
               child: const Icon(Icons.play_arrow, color: Colors.white, size: 30),
             ),
           ),
           Positioned(
-            left: 6,
-            top: 6,
+            left: 7,
+            top: 7,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(color: Colors.black45, borderRadius: BorderRadius.circular(8)),
               child: Text(content['@type'] == 'messageAnimation' ? 'GIF' : duration(dur),
                   style: const TextStyle(color: Colors.white, fontSize: 12)),
@@ -283,30 +330,26 @@ class MessageBubble extends StatelessWidget {
         return [
           Row(mainAxisSize: MainAxisSize.min, children: [
             Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: out ? c.outTime : c.blueText, shape: BoxShape.circle),
-              child: const Icon(Icons.play_arrow, color: Colors.white, size: 28),
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+              child: const Icon(Icons.play_arrow, color: Colors.white, size: 26),
             ),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                for (var i = 0; i < 24; i++)
+                for (var i = 0; i < 26; i++)
                   Container(
                     width: 2.5,
                     height: 4.0 + ((i * 7 + dur) % 13),
                     margin: const EdgeInsets.only(right: 1.5),
-                    decoration: BoxDecoration(
-                      color: (out ? c.outTime : c.blueText).withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(1),
-                    ),
+                    decoration: BoxDecoration(color: accent.withValues(alpha: 0.7), borderRadius: BorderRadius.circular(1)),
                   ),
               ]),
               const SizedBox(height: 3),
-              Text(duration(dur), style: TextStyle(fontSize: 13, color: out ? c.outTime : c.inTime)),
+              Text(duration(dur), style: TextStyle(fontSize: 12.5, color: sub)),
             ]),
           ]),
-          const SizedBox(height: 14),
         ];
       case 'messageDocument':
       case 'messageAudio':
@@ -317,11 +360,11 @@ class MessageBubble extends StatelessWidget {
         return [
           Row(mainAxisSize: MainAxisSize.min, children: [
             Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: out ? c.outTime : c.blueText, shape: BoxShape.circle),
-              child: Icon(content['@type'] == 'messageAudio' ? Icons.music_note : Icons.insert_drive_file,
-                  color: Colors.white, size: 24),
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+              child: Icon(content['@type'] == 'messageAudio' ? Icons.music_note : Icons.insert_drive_file_outlined,
+                  color: Colors.white, size: 22),
             ),
             const SizedBox(width: 10),
             Flexible(
@@ -329,20 +372,19 @@ class MessageBubble extends StatelessWidget {
                 Text(name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: textColor)),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
                 const SizedBox(height: 2),
-                Text(_size(size), style: TextStyle(fontSize: 13, color: out ? c.outTime : c.inTime)),
+                Text(_size(size), style: TextStyle(fontSize: 12.5, color: sub)),
               ]),
             ),
           ]),
-          const SizedBox(height: 14),
         ];
       case 'messageText':
       case null:
         return [];
       default:
         if (contentText(content).isNotEmpty) return [];
-        return [Text(contentPreview(content), style: TextStyle(fontSize: 16, color: textColor))];
+        return [Text(contentPreview(content), style: TextStyle(fontSize: 15, color: textColor))];
     }
   }
 
@@ -353,29 +395,32 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-/// Пузырь с «хвостиком» снизу, как у Telegram Android.
+String compactCount(int n) =>
+    n < 1000 ? '$n' : n < 1000000 ? '${(n / 1000).toStringAsFixed(1)}K' : '${(n / 1e6).toStringAsFixed(1)}M';
+
+/// Пузырь tdesktop: скругление и маленький «хвостик» у последнего сообщения серии.
 class _BubblePainter extends CustomPainter {
   _BubblePainter({required this.color, required this.out, required this.tail});
   final Color color;
   final bool out;
   final bool tail;
 
-  static const radius = 16.0;
+  static const radius = 14.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, h = size.height;
     const r = radius;
-    final small = tail ? 4.0 : r;
+    final small = tail ? 0.0 : r;
     final path = Path();
     if (out) {
       path.addRRect(RRect.fromLTRBAndCorners(0, 0, w, h,
           topLeft: const Radius.circular(r), topRight: const Radius.circular(r),
           bottomLeft: const Radius.circular(r), bottomRight: Radius.circular(small)));
       if (tail) {
-        path.moveTo(w - 6, h - 12);
-        path.quadraticBezierTo(w - 4, h - 2, w + 7, h);
-        path.lineTo(w - 6, h);
+        path.moveTo(w, h - 10);
+        path.quadraticBezierTo(w + 1, h - 1, w + 7, h);
+        path.lineTo(w, h);
         path.close();
       }
     } else {
@@ -383,13 +428,12 @@ class _BubblePainter extends CustomPainter {
           topLeft: const Radius.circular(r), topRight: const Radius.circular(r),
           bottomLeft: Radius.circular(small), bottomRight: const Radius.circular(r)));
       if (tail) {
-        path.moveTo(6, h - 12);
-        path.quadraticBezierTo(4, h - 2, -7, h);
-        path.lineTo(6, h);
+        path.moveTo(0, h - 10);
+        path.quadraticBezierTo(-1, h - 1, -7, h);
+        path.lineTo(0, h);
         path.close();
       }
     }
-    canvas.drawShadow(path, Colors.black.withValues(alpha: 0.4), 0.8, false);
     canvas.drawPath(path, Paint()..color = color);
   }
 

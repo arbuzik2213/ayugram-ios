@@ -51,21 +51,23 @@ class _AyuAppState extends State<AyuApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'AyuGram',
-      debugShowCheckedModeBanner: false,
-      theme: buildAyuTheme(Brightness.light),
-      darkTheme: buildAyuTheme(Brightness.dark),
-      home: !_started
-          ? ApiKeysScreen(onDone: () => setState(_maybeStart))
-          : ListenableBuilder(
-              listenable: TdService.instance,
-              builder: (context, _) {
-                final state = TdService.instance.authState;
-                if (state?['@type'] == 'authorizationStateReady') return const ChatListScreen();
-                return AuthScreen(state: state ?? {'@type': 'authorizationStateWaitTdlibParameters'});
-              },
-            ),
+    return ListenableBuilder(
+      listenable: AyuSettings.instance,
+      builder: (context, _) => MaterialApp(
+        title: 'AyuGram',
+        debugShowCheckedModeBanner: false,
+        theme: buildAyuTheme(AyuSettings.instance.nightMode),
+        home: !_started
+            ? ApiKeysScreen(onDone: () => setState(_maybeStart))
+            : ListenableBuilder(
+                listenable: TdService.instance,
+                builder: (context, _) {
+                  final state = TdService.instance.authState;
+                  if (state?['@type'] == 'authorizationStateReady') return const ChatListScreen();
+                  return AuthScreen(state: state ?? {'@type': 'authorizationStateWaitTdlibParameters'});
+                },
+              ),
+      ),
     );
   }
 }

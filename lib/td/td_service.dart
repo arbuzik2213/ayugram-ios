@@ -23,6 +23,8 @@ class TdService extends ChangeNotifier {
 
   final chats = <int, TdObject>{};
   final users = <int, TdObject>{};
+  final supergroups = <int, TdObject>{};
+  final basicGroups = <int, TdObject>{};
   final blockedUsers = <int>{};
   final _files = <int, ValueNotifier<TdObject>>{};
 
@@ -62,6 +64,13 @@ class TdService extends ChangeNotifier {
       case 'updateUser':
         final user = u['user'] as TdObject;
         users[user['id'] as int] = user;
+      case 'updateSupergroup':
+        final sg = u['supergroup'] as TdObject;
+        supergroups[sg['id'] as int] = sg;
+        _bumpChats();
+      case 'updateBasicGroup':
+        final bg = u['basic_group'] as TdObject;
+        basicGroups[bg['id'] as int] = bg;
       case 'updateUserStatus':
         final uid = u['user_id'] as int;
         users[uid]?['status'] = u['status'];
@@ -429,6 +438,62 @@ class TdService extends ChangeNotifier {
 
   bool isPinned(TdObject chat) => (chat['positions'] as List? ?? [])
       .any((p) => (p['list'] as TdObject)['@type'] == 'chatListMain' && p['is_pinned'] == true);
+
+  TdObject? supergroupOf(TdObject chat) {
+    final t = chat['type'] as TdObject?;
+    return t?['@type'] == 'chatTypeSupergroup' ? supergroups[t!['supergroup_id']] : null;
+  }
+
+  bool isChannel(TdObject chat) {
+    final t = chat['type'] as TdObject?;
+    return t?['@type'] == 'chatTypeSupergroup' && t?['is_channel'] == true;
+  }
+
+  bool isGroup(TdObject chat) {
+    final t = chat['type'] as TdObject?;
+    return t?['@type'] == 'chatTypeBasicGroup' || (t?['@type'] == 'chatTypeSupergroup' && t?['is_channel'] != true);
+  }
+
+  TdObject? privateUser(TdObject chat) {
+    final t = chat['type'] as TdObject?;
+    return t?['@type'] == 'chatTypePrivate' ? users[t!['user_id']] : null;
+  }
+
+  bool isVerified(TdObject chat) {
+    final owner = privateUser(chat) ?? supergroupOf(chat);
+    final v = owner?['verification_status'] as TdObject?;
+    return v?['is_verified'] == true || owner?['is_verified'] == true;
+  }
+
+  int? memberCount(TdObject chat) {
+    final t = chat['type'] as TdObject?;
+    if (t?['@type'] == 'chatTypeSupergroup') return supergroups[t!['supergroup_id']]?['member_count'] as int?;
+    if (t?['@type'] == 'chatTypeBasicGroup') return basicGroups[t!['basic_group_id']]?['member_count'] as int?;
+    return null;
+  }
+
+  /// Можно ли писать в чат (в каналах — только админам с правом публикации).
+  bool canPost(TdObject chat) {
+    if (isChannel(chat)) {
+      final status = supergroupOf(chat)?['status'] as TdObject?;
+      return status?['@type'] == 'chatMemberStatusCreator' ||
+          (status?['@type'] == 'chatMemberStatusAdministrator' &&
+              (status?['rights'] as TdObject?)?['can_post_messages'] == true);
+    }
+    return (chat['permissions'] as TdObject?)?['can_send_basic_messages'] != false || privateUser(chat) != null;
+  }
+
+  bool isMuted(TdObject chat) => ((chat['notification_settings'] as TdObject?)?['mute_for'] as int? ?? 0) > 0;
+
+  void setMuted(TdObject chat, bool muted) {
+    final ns = Map<String, dynamic>.from(chat['notification_settings'] as TdObject? ?? {});
+    ns['@type'] = 'chatNotificationSettings';
+    ns['use_default_mute_for'] = false;
+    ns['mute_for'] = muted ? 2147483647 : 0;
+    chat['notification_settings'] = ns;
+    td.fire({'@type': 'setChatNotificationSettings', 'chat_id': chat['id'], 'notification_settings': ns});
+    _bumpChats();
+  }
 
   String userName(int id) {
     final u = users[id];

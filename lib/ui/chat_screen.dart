@@ -12,6 +12,7 @@ import '../td/td_client.dart';
 import '../td/td_service.dart';
 import 'format.dart';
 import 'message_bubble.dart';
+import 'chat_info_screen.dart';
 import 'message_history_screen.dart';
 import 'ayu_theme.dart';
 import 'widgets.dart';
@@ -39,6 +40,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _hasMore = true;
   bool _showFiltered = false;
   TdObject? _replyTo;
+  TdObject? _pinned;
   StreamSubscription? _sub;
 
   TdObject get _chat => _svc.chats[widget.chatId] ?? {'id': widget.chatId, 'title': ''};
@@ -62,6 +64,14 @@ class _ChatScreenState extends State<ChatScreen> {
     _edited.addAll(edited);
     await _loadMore();
     _markVisibleRead();
+    _loadPinned();
+  }
+
+  Future<void> _loadPinned() async {
+    try {
+      final p = await _svc.td.send({'@type': 'getChatPinnedMessage', 'chat_id': _chatId});
+      if (mounted) setState(() => _pinned = p);
+    } catch (_) {}
   }
 
   @override
@@ -161,6 +171,8 @@ class _ChatScreenState extends State<ChatScreen> {
           if (i != -1) {
             _messages[i] = {..._messages[i], 'edit_date': u['edit_date'], 'reply_markup': u['reply_markup']};
           }
+        case 'updateMessageIsPinned':
+          _loadPinned();
         case 'updateMessageInteractionInfo':
           final i = _indexOf(u['message_id'] as int);
           if (i != -1) _messages[i] = {..._messages[i], 'interaction_info': u['interaction_info']};
@@ -318,19 +330,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _subtitle() {
     final chat = _chat;
-    final type = chat['type'] as TdObject?;
     String base;
-    switch (type?['@type']) {
-      case 'chatTypePrivate':
-        base = userStatus(_svc.users[type!['user_id']]);
-      case 'chatTypeSupergroup':
-        base = type!['is_channel'] == true ? 'канал' : 'группа';
-      case 'chatTypeBasicGroup':
-        base = 'группа';
-      default:
-        base = '';
+    final user = _svc.privateUser(chat);
+    if (user != null) {
+      base = userStatus(user);
+    } else {
+      final n = _svc.memberCount(chat);
+      final channel = _svc.isChannel(chat);
+      base = n == null
+          ? (channel ? 'канал' : 'группа')
+          : '${formatThousands(n)} ${channel ? plural(n, 'подписчик', 'подписчика', 'подписчиков') : plural(n, 'участник', 'участника', 'участников')}';
     }
-    if (_settings.showPeerId) base = '$base · ${peerIdLabel(chat)}';
     return base;
   }
 
@@ -347,13 +357,15 @@ class _ChatScreenState extends State<ChatScreen> {
       !isServiceMessage(a['content'] as TdObject?) &&
       !isServiceMessage(b['content'] as TdObject?);
 
+  void _openInfo() =>
+      Navigator.push(context, MaterialPageRoute(builder: (_) => ChatInfoScreen(chatId: _chatId)));
+
   @override
   Widget build(BuildContext context) {
     final c = context.ayu;
     final chat = _chat;
-    final type = (chat['type'] as TdObject?)?['@type'];
-    final isGroup = type == 'chatTypeBasicGroup' ||
-        (type == 'chatTypeSupergroup' && (chat['type'] as TdObject)['is_channel'] != true);
+    final isGroup = _svc.isGroup(chat);
+    final saved = _chatId == _svc.myId;
 
     final visible = <TdObject>[];
     var hidden = 0;
@@ -372,28 +384,35 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     return Scaffold(
-      backgroundColor: c.wallpaper.first,
+      backgroundColor: c.historyBg,
       appBar: AppBar(
         titleSpacing: 0,
-        title: Row(children: [
-          Avatar(id: _chatId, title: chat['title'] as String? ?? '', photo: chat['photo'] as TdObject?, radius: 21),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(chat['title'] as String? ?? '',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: c.actionBarTitle)),
-              Text(_subtitle(),
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: c.actionBarSubtitle)),
+        toolbarHeight: 54,
+        title: GestureDetector(
+          onTap: _openInfo,
+          behavior: HitTestBehavior.opaque,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(saved ? 'Избранное' : chat['title'] as String? ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: c.windowBoldFg)),
+              ),
+              if (_svc.isVerified(chat)) const VerifiedBadge(size: 15),
             ]),
-          ),
-        ]),
+            if (!saved)
+              Text(_subtitle(),
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: c.windowSubTextFg)),
+          ]),
+        ),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
+            icon: Icon(Icons.more_vert, color: c.menuIconFg),
             onSelected: (v) {
               switch (v) {
+                case 'info':
+                  _openInfo();
                 case 'read':
                   _svc.viewMessages(_chatId, [for (final m in _messages.take(100)) m['id'] as int], force: true);
                   _toast('Чат прочитан');
@@ -404,7 +423,8 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'read', child: Text('Прочитать чат')),
+              const PopupMenuItem(value: 'info', child: Text('Информация')),
+              const PopupMenuItem(value: 'read', child: Text('Прочитать на сервере')),
               PopupMenuItem(value: 'filtered', child: Text(_showFiltered ? 'Скрыть отфильтрованные' : 'Показать отфильтрованные')),
               const PopupMenuItem(value: 'deleted', child: Text('Удалённые сообщения')),
             ],
@@ -413,15 +433,16 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: AyuWallpaper(
         child: Column(children: [
+          if (_pinned != null) _pinnedBar(c),
           if (hidden > 0)
             GestureDetector(
               onTap: () => setState(() => _showFiltered = true),
               child: Container(
                 width: double.infinity,
                 color: c.windowBg,
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: 9),
                 child: Text('Скрыто фильтрами: $hidden · показать',
-                    textAlign: TextAlign.center, style: TextStyle(color: c.blueText, fontSize: 15)),
+                    textAlign: TextAlign.center, style: TextStyle(color: c.windowActiveTextFg, fontSize: 14)),
               ),
             ),
           Expanded(
@@ -435,34 +456,105 @@ class _ChatScreenState extends State<ChatScreen> {
                 final older = i + 1 < visible.length ? visible[i + 1] : null;
                 final newer = i > 0 ? visible[i - 1] : null;
                 final newDay = older == null || dayHeader(older['date'] as int) != dayHeader(m['date'] as int);
-                final bubble = MessageBubble(
+                final last = newer == null || !_sameSender(newer, m);
+                final incomingGroup = isGroup && m['is_outgoing'] != true && !isServiceMessage(m['content'] as TdObject?);
+                Widget row = MessageBubble(
                   key: ValueKey(m['id']),
                   message: m,
                   chat: chat,
                   isDeleted: _deleted.contains(m['id']),
                   isEdited: _edited.contains(m['id']),
                   showSender: isGroup && (older == null || !_sameSender(older, m)),
-                  tail: newer == null || !_sameSender(newer, m),
+                  tail: last,
+                  avatarSlot: incomingGroup,
                   replyTo: _replyObject(m),
                   onLongPress: () => _messageMenu(m),
                 );
-                if (!newDay) return bubble;
-                return Column(children: [ServicePill(dayHeader(m['date'] as int)), bubble]);
+                if (incomingGroup) {
+                  final sender = m['sender_id'] as TdObject?;
+                  final sid = (sender?['user_id'] ?? sender?['chat_id'] ?? 0) as int;
+                  final photo = sender?['@type'] == 'messageSenderUser'
+                      ? (_svc.users[sid]?['profile_photo'] as TdObject?)
+                      : (_svc.chats[sid]?['photo'] as TdObject?);
+                  row = Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(8, 0, 8, last ? 6 : 1),
+                      child: last
+                          ? Avatar(id: sid, title: _svc.senderName(sender), photo: photo, radius: 16)
+                          : const SizedBox(width: 32),
+                    ),
+                    Expanded(child: row),
+                  ]);
+                }
+                if (!newDay) return row;
+                return Column(children: [ServicePill(dayHeader(m['date'] as int)), row]);
               },
             ),
           ),
-          _composer(),
+          _svc.canPost(chat) ? _composer() : _muteBar(chat),
         ]),
+      ),
+    );
+  }
+
+  Widget _pinnedBar(AyuColors c) {
+    final p = _pinned!;
+    return Material(
+      color: c.windowBg,
+      child: InkWell(
+        onTap: () {
+          final i = _indexOf(p['id'] as int);
+          if (i != -1) _toast(contentPreview(p['content'] as TdObject?));
+        },
+        child: Container(
+          height: 46,
+          padding: const EdgeInsets.fromLTRB(12, 5, 12, 5),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.historyBg))),
+          child: Row(children: [
+            Container(width: 2, color: c.windowActiveTextFg),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text('Закреплённое сообщение',
+                    style: TextStyle(color: c.windowActiveTextFg, fontSize: 13.5, fontWeight: FontWeight.w600)),
+                Text(contentPreview(p['content'] as TdObject?).replaceAll('\n', ' '),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: c.windowFg, fontSize: 13.5)),
+              ]),
+            ),
+            Icon(Icons.push_pin_outlined, size: 20, color: c.menuIconFg),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Нижняя кнопка в канале без права публикации (ChannelBottomButton = MuteUnmute).
+  Widget _muteBar(TdObject chat) {
+    final c = context.ayu;
+    final muted = _svc.isMuted(chat);
+    return Material(
+      color: c.historyComposeAreaBg,
+      child: InkWell(
+        onTap: () => setState(() => _svc.setMuted(chat, !muted)),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: Center(
+              child: Text(muted ? 'ВКЛЮЧИТЬ ЗВУК' : 'ВЫКЛЮЧИТЬ ЗВУК',
+                  style: TextStyle(color: c.lightButtonFg, fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
+            ),
+          ),
+        ),
       ),
     );
   }
 
   Widget _composer() {
     final c = context.ayu;
-    final canSend = (_chat['permissions'] as TdObject?)?['can_send_basic_messages'] != false ||
-        (_chat['type'] as TdObject?)?['@type'] == 'chatTypePrivate';
     return Container(
-      color: c.panelBg,
+      color: c.historyComposeAreaBg,
       child: SafeArea(
         top: false,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -470,19 +562,19 @@ class _ChatScreenState extends State<ChatScreen> {
             Container(
               padding: const EdgeInsets.fromLTRB(14, 6, 4, 0),
               child: Row(children: [
-                Icon(Icons.reply, color: c.blueText),
+                Icon(Icons.reply, color: c.windowActiveTextFg),
                 const SizedBox(width: 12),
-                Container(width: 2, height: 36, color: c.blueText),
+                Container(width: 2, height: 34, color: c.windowActiveTextFg),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_svc.senderName(_replyTo!['sender_id'] as TdObject?),
-                        style: TextStyle(color: c.blueText, fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text('Ответ ${_svc.senderName(_replyTo!['sender_id'] as TdObject?)}',
+                        style: TextStyle(color: c.windowActiveTextFg, fontWeight: FontWeight.w600, fontSize: 13.5)),
                     Text(contentPreview(_replyTo!['content'] as TdObject?).replaceAll('\n', ' '),
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: c.text, fontSize: 14)),
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: c.windowFg, fontSize: 13.5)),
                   ]),
                 ),
-                IconButton(icon: Icon(Icons.close, color: c.panelIcons), onPressed: () => setState(() => _replyTo = null)),
+                IconButton(icon: Icon(Icons.close, color: c.historyComposeIconFg), onPressed: () => setState(() => _replyTo = null)),
               ]),
             ),
           ListenableBuilder(
@@ -490,34 +582,30 @@ class _ChatScreenState extends State<ChatScreen> {
             builder: (context, _) {
               final empty = _input.text.trim().isEmpty;
               return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                const SizedBox(width: 12),
+                IconButton(
+                  icon: Transform.rotate(angle: 0.6, child: Icon(Icons.attach_file, color: c.historyComposeIconFg, size: 24)),
+                  onPressed: _sendPhoto,
+                ),
                 Expanded(
                   child: TextField(
                     controller: _input,
-                    enabled: canSend,
                     minLines: 1,
                     maxLines: 6,
                     textCapitalization: TextCapitalization.sentences,
                     onChanged: (_) => _svc.sendTyping(_chatId),
-                    style: TextStyle(fontSize: 18, color: c.text),
+                    style: TextStyle(fontSize: 15, color: c.windowFg),
                     decoration: InputDecoration(
-                      hintText: canSend ? (_settings.isGhostModeActive ? 'Сообщение 👻' : 'Сообщение') : 'Отправка недоступна',
-                      hintStyle: TextStyle(color: c.panelHint, fontSize: 18),
+                      hintText: _settings.isGhostModeActive ? 'Написать сообщение… 👻' : 'Написать сообщение…',
+                      hintStyle: TextStyle(color: c.placeholderFg, fontSize: 15),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
                 ),
-                if (empty)
-                  IconButton(
-                    icon: Transform.rotate(angle: 0.8, child: Icon(Icons.attach_file, color: c.panelIcons, size: 26)),
-                    onPressed: canSend ? _sendPhoto : null,
-                  ),
                 IconButton(
-                  icon: Icon(Icons.send, color: empty ? c.panelIcons : c.panelSend, size: 26),
-                  onPressed: canSend && !empty ? _send : null,
+                  icon: Icon(empty ? Icons.mic_none : Icons.send, color: empty ? c.historyComposeIconFg : c.historySendIconFg, size: 25),
+                  onPressed: empty ? () => _toast('Голосовые пока не поддерживаются') : _send,
                 ),
-                const SizedBox(width: 4),
               ]);
             },
           ),

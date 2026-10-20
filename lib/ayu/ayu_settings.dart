@@ -91,6 +91,7 @@ class AyuSettings extends ChangeNotifier {
   bool filterZalgo = true;
   bool disableAds = true;
   bool streamerMode = false;
+  bool nightMode = true;
 
   // --- Подтверждения отправки ---
   bool stickerConfirmation = false;
@@ -153,6 +154,7 @@ class AyuSettings extends ChangeNotifier {
         'filterZalgo': filterZalgo,
         'disableAds': disableAds,
         'streamerMode': streamerMode,
+        'nightMode': nightMode,
         'stickerConfirmation': stickerConfirmation,
       };
 
@@ -184,6 +186,7 @@ class AyuSettings extends ChangeNotifier {
     filterZalgo = v('filterZalgo', filterZalgo);
     disableAds = v('disableAds', disableAds);
     streamerMode = v('streamerMode', streamerMode);
+    nightMode = v('nightMode', nightMode);
     stickerConfirmation = v('stickerConfirmation', stickerConfirmation);
   }
 

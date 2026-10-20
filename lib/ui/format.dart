@@ -101,7 +101,7 @@ String userStatus(TdObject? user) {
   if ((user?['type'] as TdObject?)?['@type'] == 'userTypeBot') return 'бот';
   return switch (status?['@type']) {
     'userStatusOnline' => 'в сети',
-    'userStatusOffline' => 'был(а) ${fullDate(status!['was_online'] as int)}',
+    'userStatusOffline' => 'был(а) ${_ago(status!['was_online'] as int)}',
     'userStatusRecently' => 'был(а) недавно',
     'userStatusLastWeek' => 'был(а) на этой неделе',
     'userStatusLastMonth' => 'был(а) в этом месяце',
@@ -110,4 +110,35 @@ String userStatus(TdObject? user) {
 }
 
 /// ID чата в формате Bot API (как showPeerId = BotApi в AyuGram).
-String peerIdLabel(TdObject chat) => 'ID: ${chat['id']}';
+String peerIdLabel(TdObject chat) => '${chat['id']}';
+
+String formatThousands(int n) {
+  final s = n.toString();
+  final b = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write(' ');
+    b.write(s[i]);
+  }
+  return b.toString();
+}
+
+String plural(int n, String one, String few, String many) {
+  final m10 = n % 10, m100 = n % 100;
+  if (m10 == 1 && m100 != 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+String _ago(int date) {
+  final d = unix(date);
+  final now = DateTime.now();
+  final diff = now.difference(d);
+  if (diff.inMinutes < 1) return 'только что';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} ${plural(diff.inMinutes, 'минуту', 'минуты', 'минут')} назад';
+  if (diff.inHours < 12) return '${diff.inHours} ${plural(diff.inHours, 'час', 'часа', 'часов')} назад';
+  final hm = '${_two(d.hour)}:${_two(d.minute)}';
+  if (d.year == now.year && d.month == now.month && d.day == now.day) return 'сегодня в $hm';
+  final y = now.subtract(const Duration(days: 1));
+  if (d.year == y.year && d.month == y.month && d.day == y.day) return 'вчера в $hm';
+  return '${_two(d.day)}.${_two(d.month)}.${d.year % 100} в $hm';
+}

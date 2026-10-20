@@ -41,6 +41,7 @@ dependencies:
   tdlib_ios:
     path: packages/tdlib_ios
   image_picker: ^1.2.4
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
@@ -65,16 +66,16 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
-  # Шрифт Telegram Android / AyuGram4A
+  # Шрифт AyuGram Desktop
   fonts:
-    - family: Roboto
+    - family: OpenSans
       fonts:
-        - asset: assets/fonts/Roboto-Regular.ttf
-        - asset: assets/fonts/Roboto-Medium.ttf
+        - asset: assets/fonts/OpenSans-Regular.ttf
+        - asset: assets/fonts/OpenSans-Semibold.ttf
           weight: 500
-        - asset: assets/fonts/Roboto-Medium.ttf
+        - asset: assets/fonts/OpenSans-Semibold.ttf
           weight: 600
-        - asset: assets/fonts/Roboto-Bold.ttf
+        - asset: assets/fonts/OpenSans-Bold.ttf
           weight: 700
 
   # To add assets to your application, add an assets section, like this:
