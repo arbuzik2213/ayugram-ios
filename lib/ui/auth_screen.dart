@@ -125,7 +125,7 @@ class _AuthScreenState extends State<AuthScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
           children: [
-            const Icon(Icons.blur_on, size: 72),
+            Center(child: Image.asset('assets/logo.png', width: 110, height: 110)),
             const SizedBox(height: 16),
             Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
